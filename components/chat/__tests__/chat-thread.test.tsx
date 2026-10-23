@@ -71,7 +71,7 @@ describe("ChatThread", () => {
     expect(handlers.onSelectOffer).toHaveBeenCalledWith(offersId, "C");
 
     fireEvent.click(screen.getByRole("button", { name: /ยืนยันข้อ A/ }));
-    expect(handlers.onConfirmOffer).toHaveBeenCalledWith(offersId);
+    expect(handlers.onConfirmOffer).toHaveBeenCalledWith(offersId, "A");
   });
 
   it("ลูกค้าพิมพ์มา: ไม่มีข้อความเสียง", () => {
@@ -95,6 +95,26 @@ describe("ChatThread", () => {
     expect(screen.getByText("ราคาล็อกโดยระบบของร้าน")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ดูข้อเสนอ 3 ทางอีกครั้ง" }));
     expect(handlers.onShowOffers).toHaveBeenCalled();
+  });
+
+  it("มีข้อเสนอชุดใหม่แล้ว ชุดเก่ากดไม่ได้ (กันยืนยันซ้อนกัน)", () => {
+    const base = buildScenario("text", { storefront, products, buyerName: "คุณนก" });
+    const older = base.messages.find((m) => m.type === "offers")!;
+    const messages = [...base.messages, { ...older, id: "newer" }];
+    render(
+      <ChatThread
+        messages={messages}
+        storefront={storefront}
+        buyerName="คุณนก"
+        onSelectOffer={vi.fn()}
+        onConfirmOffer={vi.fn()}
+        onOpenProducts={vi.fn()}
+        onShowOffers={vi.fn()}
+      />,
+    );
+    const [oldGroup, newGroup] = screen.getAllByRole("group", { name: "3 ทางเลือกจากเฮียชัย" });
+    for (const b of within(oldGroup).getAllByRole("button")) expect(b).toBeDisabled();
+    for (const b of within(newGroup).getAllByRole("button")) expect(b).toBeEnabled();
   });
 
   it("ส่งเรื่องให้เถ้าแก่: การ์ดสถานะ", () => {

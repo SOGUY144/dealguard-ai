@@ -138,4 +138,17 @@ describe("ChatScreen — มือถือ", () => {
     renderScreen({ scenario: "guard" });
     expect(within(thread()).getByText("ราคาล็อกโดยระบบของร้าน")).toBeInTheDocument();
   });
+
+  it("chip 'สั่ง 1,500 ชิ้น' = เลือกข้อเสนอ A ที่มีอยู่ ไม่ใช่ต่อราคาใหม่", () => {
+    setViewport(false);
+    Element.prototype.scrollIntoView = vi.fn();
+    renderScreen({ scenario: "guard" });
+    const before = within(thread()).getAllByRole("group").length;
+    fireEvent.click(screen.getByRole("button", { name: "สั่ง 1,500 ชิ้น" }));
+
+    const group = within(thread()).getByRole("group", { name: "3 ทางเลือกจากเฮียชัย" });
+    expect(within(group).getAllByRole("button")[0]).toHaveAttribute("aria-pressed", "true");
+    expect(within(thread()).getAllByRole("group")).toHaveLength(before);
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
 });

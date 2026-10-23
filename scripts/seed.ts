@@ -98,7 +98,7 @@ async function main() {
   for (const account of ACCOUNTS) {
     const password = saved[account.email] ?? randomBytes(12).toString("base64url");
     passwords[account.email] = password;
-    const metadata = { display_name: account.displayName, privacy_accepted_at: new Date().toISOString() };
+    const metadata = { display_name: account.displayName, privacy_accepted: true };
     const found = users.find((u) => u.email === account.email);
 
     const result = found

@@ -28,17 +28,27 @@ describe("assertOffersSafe", () => {
   });
 
   it("No Free Concession: จ่ายสดต้องเครดิต 0 วัน", () => {
-    const cash: Offer = { ...base, lever: "cash", pricePerUnit: 135, qty: 1000, creditDays: 30 };
+    const cash: Offer = { ...base, lever: "cash", pricePerUnit: 135, qty: 1000, total: 135_000, creditDays: 30 };
     expect(() => assertOffersSafe(cable, 1000, [cash])).toThrow(/concession/i);
   });
 
   it("No Free Concession: ของแถมต้องมีของแถมจริง", () => {
-    const bundle: Offer = { ...base, lever: "bundle", pricePerUnit: 145, qty: 1000 };
+    const bundle: Offer = { ...base, lever: "bundle", pricePerUnit: 145, qty: 1000, total: 145_000 };
     expect(() => assertOffersSafe(cable, 1000, [bundle])).toThrow(/concession/i);
   });
 
+  it("ราคาเป็น NaN ต้องไม่ผ่าน Floor Guard", () => {
+    expect(() => assertOffersSafe(cable, 1000, [{ ...base, pricePerUnit: Number.NaN }])).toThrow(/floor/i);
+  });
+
+  it("จำนวนต้องเป็นจำนวนเต็มบวก และยอดรวม = ราคา × จำนวน", () => {
+    expect(() => assertOffersSafe(cable, 1000, [{ ...base, qty: -1500, total: -195_000 }])).toThrow(/qty|total/i);
+    expect(() => assertOffersSafe(cable, 1000, [{ ...base, qty: 1500.5 }])).toThrow(/qty|total/i);
+    expect(() => assertOffersSafe(cable, 1000, [{ ...base, total: 1 }])).toThrow(/total/i);
+  });
+
   it("ราคาปกติต้องเท่าราคาขาย", () => {
-    const list: Offer = { ...base, lever: "list", pricePerUnit: 140, qty: 1000 };
+    const list: Offer = { ...base, lever: "list", pricePerUnit: 140, qty: 1000, total: 140_000 };
     expect(() => assertOffersSafe(cable, 1000, [list])).toThrow(/concession/i);
   });
 });

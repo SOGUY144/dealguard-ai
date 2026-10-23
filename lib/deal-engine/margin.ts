@@ -1,3 +1,4 @@
+import "server-only";
 import type { MerchantConfig, OfferEconomics, Product } from "./types";
 
 /** สิ่งที่ลูกค้าขอ: ราคาที่ใช้เป็น baseline (ราคาที่ขอ หรือราคาขายถ้าไม่ได้บอก) และจำนวน */

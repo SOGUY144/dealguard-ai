@@ -6,6 +6,8 @@ import { buttonClass, IconButton } from "@/components/ui/button";
 type Props = {
   assistantName: string;
   onTalkToHuman: () => void;
+  /** รอคำตอบอยู่ — กดซ้อนไม่ได้ */
+  busy?: boolean;
   /** แสดงปุ่มออกจากระบบ — เฉพาะมือถือ (คอมอยู่ที่แถบร้าน) */
   canLogout?: boolean;
 };
@@ -14,7 +16,7 @@ type Props = {
  * มือถือ = แคปซูลลอย (Mobile-Chat) · คอม = แถบบนของกล่องแชต (Main)
  * ปุ่ม "คุยกับคนจริง" ต้องมีทุกจอแชต (HANDOFF §6)
  */
-export function ChatHeader({ assistantName, onTalkToHuman, canLogout }: Props) {
+export function ChatHeader({ assistantName, onTalkToHuman, busy = false, canLogout }: Props) {
   return (
     <header className="glass-pill mx-3 mt-3 flex shrink-0 items-center gap-2.5 py-2 pr-2 pl-2.5 md:mx-0 md:mt-0 md:gap-3 md:rounded-none md:border-0 md:border-b md:border-[rgba(230,222,245,0.9)] md:bg-transparent md:px-[18px] md:py-3.5 md:shadow-none md:backdrop-blur-none">
       <AiAvatar variant="header" />
@@ -28,6 +30,7 @@ export function ChatHeader({ assistantName, onTalkToHuman, canLogout }: Props) {
       <button
         type="button"
         onClick={onTalkToHuman}
+        disabled={busy}
         className={buttonClass("white", "size-11 shrink-0 p-0 text-sm md:w-auto md:px-4")}
       >
         <User aria-hidden="true" size={18} className="text-accent" />

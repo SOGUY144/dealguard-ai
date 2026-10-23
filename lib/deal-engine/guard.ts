@@ -1,3 +1,4 @@
+import "server-only";
 import type { Offer, Product } from "./types";
 
 export class UnsafeOfferError extends Error {}
@@ -8,10 +9,17 @@ export class UnsafeOfferError extends Error {}
  */
 export function assertOffersSafe(product: Product, requestedQty: number, offers: Offer[]): void {
   for (const offer of offers) {
-    if (offer.pricePerUnit < product.floorPrice) {
+    // เขียนแบบ !(>=) ให้ NaN ไม่ผ่าน (NaN < floor เป็น false)
+    if (!(offer.pricePerUnit >= product.floorPrice)) {
       throw new UnsafeOfferError(
         `Floor Guard: ${offer.id} ราคา ${offer.pricePerUnit} ต่ำกว่าราคาพื้น ${product.floorPrice}`,
       );
+    }
+    if (!Number.isInteger(offer.qty) || offer.qty <= 0) {
+      throw new UnsafeOfferError(`${offer.id}: qty ${offer.qty} ต้องเป็นจำนวนเต็มบวก`);
+    }
+    if (!(offer.total > 0) || offer.total !== offer.pricePerUnit * offer.qty) {
+      throw new UnsafeOfferError(`${offer.id}: total ${offer.total} ไม่เท่ากับราคา × จำนวน`);
     }
     if (!hasTradeOff(product, requestedQty, offer)) {
       throw new UnsafeOfferError(`No Free Concession: ${offer.id} (${offer.lever}) ลดราคาโดยไม่มีเงื่อนไขแลก`);

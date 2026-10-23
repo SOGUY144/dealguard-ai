@@ -95,6 +95,16 @@ describe("OrderSummaryCard", () => {
     expect(screen.getByRole("link", { name: "ดูใบสรุปออเดอร์" })).toHaveAttribute("href", "/order/demo-A");
   });
 
+  it("ข้อเสนอของแถม → ใบสรุปบอกของแถมด้วย", () => {
+    render(<OrderSummaryCard orderId="demo-C" offer={MOCK_OFFERS[2]} productName="x" bankAccountName="y" />);
+    expect(screen.getByText("หัวชาร์จ 20W 200 ชิ้น")).toBeInTheDocument();
+  });
+
+  it("คำเตือนเรื่องบัญชีโอนแสดงทุกขนาดจอ (ไม่ซ่อนบนมือถือ)", () => {
+    render(<OrderSummaryCard orderId="demo-A" offer={MOCK_OFFERS[0]} productName="x" bankAccountName="[ชื่อบัญชีร้าน]" />);
+    expect(screen.getByText(/รับโอนเข้าบัญชี/)).not.toHaveClass("hidden");
+  });
+
   it("จ่ายสด → แสดง 'โอนทันที'", () => {
     render(<OrderSummaryCard orderId="demo-B" offer={MOCK_OFFERS[1]} productName="x" bankAccountName="y" />);
     expect(screen.getByText("โอนทันที")).toBeInTheDocument();

@@ -1,12 +1,20 @@
+import "server-only";
 import { formatQty } from "@/lib/format";
 import { computeEconomics, type GiftCost, type RequestBasis } from "./margin";
 import type { MerchantConfig, Offer, PricedOffer, Product } from "./types";
 
 export type OfferRequest = {
+  /** ราคาต่อชิ้นที่ลูกค้าขอ (engine ปัดขึ้นเป็นบาทเต็มก่อนส่งมา) */
   requestedPrice: number | null;
   qty: number;
   /** ตัดข้อเสนอที่ยอดรวมเกินนี้ทิ้ง (ก่อนไล่ id) */
   maxTotal?: number;
+};
+
+export type BuiltOffers = {
+  offers: PricedOffer[];
+  /** จำนวนข้อเสนอที่ถูกตัดเพราะยอดรวมเกินอำนาจ AI */
+  droppedOverLimit: number;
 };
 
 type Draft = Omit<Offer, "id">;
@@ -14,10 +22,11 @@ type Draft = Omit<Offer, "id">;
 const IDS: Offer["id"][] = ["A", "B", "C"];
 
 /** สร้างข้อเสนอ ซื้อเยอะ / จ่ายสด / รับของแถม (SKILL §6.4 ข้อ 3) — ตัวไหนทำไม่ได้ก็ข้าม แล้วไล่ id ใหม่ */
-export function buildOffers(product: Product, config: MerchantConfig, request: OfferRequest): PricedOffer[] {
-  // baseline ของกำไร: ถ้าไม่บอกราคา เทียบกับขายราคาเต็ม
+export function buildOffers(product: Product, config: MerchantConfig, request: OfferRequest): BuiltOffers {
+  // baseline ของกำไร = ยอมลดตามที่ขอ (ไม่บอกราคา = ขายราคาเต็ม)
+  // แต่ไม่ต่ำกว่าราคาพื้น: AI ลดต่ำกว่าพื้นไม่ได้อยู่แล้ว ขอต่ำมากจึงไม่ควรทำให้ "กำไรที่รักษาไว้" พองเกินจริง
   const basis: RequestBasis = {
-    referencePrice: request.requestedPrice ?? product.listPrice,
+    referencePrice: Math.min(product.listPrice, Math.max(product.floorPrice, request.requestedPrice ?? product.listPrice)),
     qty: request.qty,
   };
   // ราคาขั้นต่ำที่ลูกค้ายอมจ่ายเอง — ไม่เสนอต่ำกว่านี้
@@ -51,12 +60,14 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
   if (bundle) drafts.push(bundle);
 
   const maxTotal = request.maxTotal ?? Infinity;
-  return drafts
-    .filter(({ draft }) => draft.total <= maxTotal)
-    .map(({ draft, gift }, i) => {
+  const allowed = drafts.filter(({ draft }) => draft.total <= maxTotal);
+  return {
+    droppedOverLimit: drafts.length - allowed.length,
+    offers: allowed.map(({ draft, gift }, i) => {
       const offer: Offer = { id: IDS[i], ...draft };
       return { offer, economics: computeEconomics(product, config, basis, offer, gift) };
-    });
+    }),
+  };
 }
 
 /** tier ที่เล็กที่สุดซึ่งมากกว่าจำนวนที่ขอ และไม่ต่ำกว่าราคาพื้น */

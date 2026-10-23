@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideAccess, isSameOrigin, landingPath, safeNextPath } from "../routes";
+import { decideAccess, isSameOrigin, landingPath, safeNextPath, sessionResetAction } from "../routes";
 
 describe("decideAccess (proxy — เช็กเบื้องต้น ก่อนเข้าแต่ละหน้า)", () => {
   it("ยังไม่ล็อกอิน เข้าหน้าแชต → ไปล็อกอิน แล้วจำหน้าที่จะกลับมา", () => {
@@ -31,6 +31,16 @@ describe("decideAccess (proxy — เช็กเบื้องต้น ก่
   it("ล็อกอินแล้วเข้าหน้าอื่นได้ (ตรวจ role ซ้ำใน Data Access Layer)", () => {
     expect(decideAccess({ pathname: "/owner", search: "", signedIn: true })).toBe("allow");
     expect(decideAccess({ pathname: "/privacy", search: "", signedIn: true })).toBe("allow");
+  });
+
+  it("ล้าง session ของบัญชีที่ถูกลบได้โดยไม่ต้องล็อกอิน (กันวน / ↔ /login)", () => {
+    expect(decideAccess({ pathname: "/auth/session-reset", search: "?next=%2F", signedIn: false })).toBe("allow");
+    expect(decideAccess({ pathname: "/auth/session-reset", search: "", signedIn: true })).toBe("allow");
+  });
+
+  it("API ที่ยังไม่ล็อกอิน → ตอบ 401 (ไม่ redirect ไปหน้า HTML)", () => {
+    expect(decideAccess({ pathname: "/api/chat", search: "", signedIn: false })).toBe("unauthorized");
+    expect(decideAccess({ pathname: "/api/chat", search: "", signedIn: true })).toBe("allow");
   });
 
   it("ตั้งรหัสผ่านใหม่ต้องมี session (ได้มาจากลิงก์ในอีเมล)", () => {
@@ -79,7 +89,36 @@ describe("safeNextPath (กัน open redirect)", () => {
     }
   });
 
+  it("ตัวอักษรควบคุม (tab / ขึ้นบรรทัด) ที่ browser ตัดทิ้งแล้วกลายเป็น //evil → หน้าแรก", () => {
+    // พบจากการรีวิว: new URL("/\t/evil.example", origin) กลายเป็น https://evil.example/
+    for (const bad of ["/\t/evil.example", "/\n/evil.example", "/\r\n/evil.example", "/\u0000/x"]) {
+      expect(safeNextPath(bad)).toBe("/");
+    }
+  });
+
+  it("path ปกติที่มี query และ hash ยังใช้ได้", () => {
+    expect(safeNextPath("/order/demo-A?x=1#top")).toBe("/order/demo-A?x=1#top");
+  });
+
   it("ไม่พากลับไปหน้าล็อกอินซ้ำ", () => {
     expect(safeNextPath("/login")).toBe("/");
+  });
+});
+
+describe("sessionResetAction (บัญชีถูกลบแต่ session ยังไม่หมดอายุ)", () => {
+  it("ไม่มีบัญชีแล้วจริง → ออกจากระบบ", () => {
+    expect(sessionResetAction({ signedIn: true, profile: "missing" })).toBe("sign_out");
+  });
+
+  it("ยังมีบัญชี → ไม่ออกจากระบบ กลับหน้าเดิม", () => {
+    expect(sessionResetAction({ signedIn: true, profile: "found" })).toBe("continue");
+  });
+
+  it("อ่านฐานข้อมูลไม่ได้ → ห้ามออกจากระบบ ให้ลองใหม่", () => {
+    expect(sessionResetAction({ signedIn: true, profile: "error" })).toBe("retry_later");
+  });
+
+  it("ไม่มี session → ไปหน้าล็อกอิน", () => {
+    expect(sessionResetAction({ signedIn: false, profile: "missing" })).toBe("login");
   });
 });

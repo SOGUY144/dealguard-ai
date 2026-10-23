@@ -6,4 +6,6 @@
 - คีย์ทั้งหมดอยู่ใน `.env.local` ซึ่งผู้ใช้ใส่เอง (แม่แบบคือ `.env.example`) เช็กด้วย `npm run check-keys`
 - ฐานข้อมูล: `npm run db:migrate` (รัน SQL ใหม่ใน `supabase/migrations/`), `npm run db:seed`, `npm run test:db` (RLS บน Supabase จริง) — บัญชีเดโมอยู่ใน `.demo-accounts.local.md` ห้ามพิมพ์รหัสในแชต
 - อย่ารัน `npm run build` หรือ `npm install` ระหว่างที่ `npm run dev` เปิดอยู่ — dev server จะค้าง (error "Jest worker…") ต้องปิดแล้วเปิดใหม่
+  - ปิด dev server แล้วเช็กพอร์ต 3000 ด้วย — process ของ Next อาจยังค้างอยู่ (`next dev` บอก PID ไว้ถ้าเปิดซ้ำ)
+- ทดสอบใน Browser pane ตอนหน้าต่างไม่ได้วาด (`requestAnimationFrame` ไม่ทำงาน) React จะไม่เผยเนื้อหาใน `<Suspense>` ที่ stream มา → หน้าไม่ hydrate กดส่งแล้วเป็นฟอร์ม GET ธรรมดา · ทดสอบ server ด้วย `fetch('/api/chat')` จากหน้าแทน
 - เครื่องนี้เป็น Windows: `python3` คือ alias ของ Microsoft Store ใช้ไม่ได้ ให้ใช้ `python` แทนทุกครั้งที่สกิลสั่ง `python3`

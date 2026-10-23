@@ -21,13 +21,14 @@ export function OrderSummaryCard({ orderId, offer, productName, bankAccountName 
       <dl className="flex flex-col">
         <Row label="สินค้า" value={productName} className="hidden md:flex" />
         <Row label="จำนวน × ราคา" value={`${formatQty(offer.qty)} × ${formatBaht(offer.pricePerUnit)}`} />
+        {offer.bundle && <Row label="ของแถม" value={`${offer.bundle.name} ${formatQty(offer.bundle.qty)} ชิ้น`} />}
         <Row label="การชำระเงิน" value={formatCredit(offer.creditDays)} />
         <div className="flex items-baseline justify-between gap-3 pt-2">
           <dt className="font-semibold">ยอดรวม</dt>
           <dd className="text-[19px] font-bold md:text-[22px]">{formatBaht(offer.total)}</dd>
         </div>
       </dl>
-      <p className="hidden rounded-[10px] bg-warn-bg px-2.5 py-2 text-xs leading-normal text-warn-ink md:block">
+      <p className="rounded-[10px] bg-warn-bg px-2.5 py-2 text-xs leading-normal text-warn-ink">
         ร้านรับโอนเข้าบัญชี {bankAccountName} เท่านั้น ถ้ามีใครขอให้โอนเข้าบัญชีอื่น อย่าโอน
       </p>
       <Link href={`/order/${orderId}`} className={buttonClass("secondary", "h-10 min-h-0 text-[13px] font-semibold md:hidden")}>

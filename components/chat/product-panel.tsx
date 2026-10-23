@@ -14,6 +14,8 @@ type PanelProps = {
   activeSku?: string;
   onAsk: (sku: string) => void;
   onClose: () => void;
+  /** รอคำตอบอยู่ — กดขอต่อราคาซ้อนไม่ได้ */
+  busy?: boolean;
 };
 
 function useProductSearch(products: PublicProduct[]) {
@@ -48,7 +50,7 @@ function SearchField({ value, onChange, className }: { value: string; onChange: 
 const Empty = () => <p className="py-6 text-center text-sm text-muted">ไม่พบสินค้า</p>;
 
 /** คอม: drawer ด้านขวาของแชต (Main.dc.html) */
-export function ProductDrawer({ products, activeSku, onAsk, onClose }: PanelProps) {
+export function ProductDrawer({ products, activeSku, onAsk, onClose, busy = false }: PanelProps) {
   const { query, setQuery, filtered } = useProductSearch(products);
   return (
     <aside
@@ -80,6 +82,7 @@ export function ProductDrawer({ products, activeSku, onAsk, onClose }: PanelProp
               <button
                 type="button"
                 onClick={() => onAsk(p.sku)}
+                disabled={busy}
                 className={buttonClass(active ? "secondary" : "primary", "h-10 min-h-0 text-sm font-semibold")}
               >
                 {active ? "กำลังต่อราคาในแชต" : "ขอต่อราคา"}
@@ -93,7 +96,7 @@ export function ProductDrawer({ products, activeSku, onAsk, onClose }: PanelProp
 }
 
 /** มือถือ: bottom sheet (Mobile-Product.dc.html) */
-export function ProductSheet({ products, onAsk, onClose }: PanelProps) {
+export function ProductSheet({ products, onAsk, onClose, busy = false }: PanelProps) {
   const { query, setQuery, filtered } = useProductSearch(products);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -142,6 +145,7 @@ export function ProductSheet({ products, onAsk, onClose }: PanelProps) {
               <button
                 type="button"
                 onClick={() => onAsk(p.sku)}
+                disabled={busy}
                 className={buttonClass("primary", "h-11 shrink-0 px-3.5 text-[13px] font-semibold")}
               >
                 ต่อราคา

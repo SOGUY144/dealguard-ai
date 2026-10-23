@@ -12,22 +12,30 @@ export type CurrentUser = {
   displayName: string;
 };
 
-/** null = ยังไม่ล็อกอิน · cache ไว้ต่อ 1 request ให้เรียกได้หลายที่ */
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+/** claims จาก JWT ที่ลายเซ็นถูกต้อง (ยังไม่รู้ว่าบัญชียังอยู่ไหม) · null = ไม่มี session */
+const getSessionClaims = cache(async () => {
   // บอก Next ว่าส่วนนี้สร้างตอนมี request เท่านั้น — Supabase เทียบวันหมดอายุ token ด้วย Date.now()
   // ถ้าไม่มี Cache Components จะ error "encountered Date.now() while prerendering"
   await connection();
   const supabase = await createSupabaseServerClient();
   // getClaims ตรวจลายเซ็น JWT — อย่าเชื่อ getSession() ที่อ่านจาก cookie ตรงๆ
   const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims;
-  if (!claims?.sub) return null;
+  return data?.claims?.sub ? data.claims : null;
+});
 
-  const { data: profile } = await supabase
+/** null = ยังไม่ล็อกอิน (หรือบัญชีถูกลบไปแล้ว) · cache ไว้ต่อ 1 request ให้เรียกได้หลายที่ */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+  const claims = await getSessionClaims();
+  if (!claims) return null;
+  const supabase = await createSupabaseServerClient();
+
+  const { data: profile, error } = await supabase
     .from("profiles")
     .select("role, display_name")
     .eq("id", claims.sub)
-    .single();
+    .maybeSingle();
+  // อ่านไม่ได้ ≠ ไม่มีบัญชี — โยน error ให้หน้าแสดงว่าขัดข้อง ไม่พาไปล้าง session
+  if (error) throw new Error(`อ่านบัญชีไม่สำเร็จ: ${error.message}`);
   if (!profile) return null;
 
   return {
@@ -40,8 +48,11 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
 export async function requireUser(next = "/"): Promise<CurrentUser> {
   const user = await getCurrentUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
-  return user;
+  if (user) return user;
+  // JWT ยังไม่หมดอายุแต่ไม่มีบัญชีแล้ว (ถูกลบ) → ต้องล้าง session ก่อน
+  // ไม่งั้น proxy เห็นว่าล็อกอินอยู่ ส่ง /login กลับมา / แล้ววนไม่จบ
+  const next_ = encodeURIComponent(next);
+  redirect((await getSessionClaims()) ? `/auth/session-reset?next=${next_}` : `/login?next=${next_}`);
 }
 
 /** หน้าเถ้าแก่: buyer เปิดไม่ได้ (เห็นต้นทุน/ราคาพื้น) */

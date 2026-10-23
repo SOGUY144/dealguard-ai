@@ -1,21 +1,10 @@
-// ตัวตอบจำลองของเฟส 2 — ใช้แทน API จนกว่าเฟส 4 (Layer 1/3) กับเฟส 6 (เสียง) จะพร้อม
+// ตัวตอบจำลองของเฟส 2 — ใช้กับ /?state=… (ตรวจหน้าตา) และ test ส่วนแชตจริงใช้ API (เฟส 4)
 // คำตอบทั้งหมดเอามาจากข้อความในไฟล์ดีไซน์ ไม่ได้คิดราคาจริง (ข้อเสนอใช้ MOCK_OFFERS เสมอ)
-import { formatBaht } from "@/lib/format";
+import type { ChatAction, Suggestion } from "./actions";
 import { MOCK_OFFERS } from "./mock-offers";
-import type { ChatMessage, ChatMessageOf, Offer, PublicProduct, Storefront } from "./types";
-
-export type ChatAction =
-  | { type: "pick_product"; sku: string }
-  | { type: "send"; text: string; inputMode: "text" | "voice" }
-  | { type: "select_offer"; messageId: string; offerId: Offer["id"] }
-  | { type: "confirm_offer"; messageId: string }
-  | { type: "talk_to_human" };
-
-/** chip คำตอบด่วนเหนือช่องพิมพ์ */
-export type Suggestion = {
-  label: string;
-  action: { type: "open_products" } | Extract<ChatAction, { type: "send" }>;
-};
+import { greetingText, productIntroText, replyFor, type ReplyContext } from "./replies";
+import { lastOffers, tradeOffChips } from "./suggestions";
+import type { ChatMessage, ChatMessageDraft as Draft, ChatMessageOf, PublicProduct, Storefront } from "./types";
 
 export type ChatState = {
   messages: ChatMessage[];
@@ -36,8 +25,6 @@ export type MockContext = {
 
 const DEMO_NEGOTIATION = "ขอ 125 ได้ไหมคะ 1,000 ชิ้น ร้านข้างๆ ให้ 110";
 
-type Draft = ChatMessage extends infer M ? (M extends ChatMessage ? Omit<M, "id" | "at"> : never) : never;
-
 function append(state: ChatState, ctx: MockContext, drafts: Draft[], patch: Partial<ChatState> = {}): ChatState {
   let seq = state.seq;
   const at = ctx.now();
@@ -53,7 +40,7 @@ export function initialChatState(ctx: MockContext): ChatState {
     [
       {
         type: "ai_text",
-        text: `สวัสดีครับ ${ctx.storefront.assistantName}ครับ เลือกสินค้าที่อยากได้ แล้วบอกจำนวนกับราคาที่ต้องการได้เลยครับ`,
+        text: greetingText(ctx.storefront),
         cta: "open_products",
       },
     ],
@@ -66,15 +53,15 @@ export function mockRespond(state: ChatState, action: ChatAction, ctx: MockConte
     case "pick_product": {
       const product = ctx.products.find((p) => p.sku === action.sku);
       if (!product) return state;
+      const card: Draft = { type: "product_card", sku: product.sku, name: product.name, listPrice: product.listPrice };
+      // ส่งเรื่องให้เถ้าแก่แล้ว — เก็บการ์ดไว้ให้เถ้าแก่เห็น AI ไม่ตอบ
+      if (state.mode === "human") return append(state, ctx, [card], { suggestions: [] });
       return append(
         state,
         ctx,
         [
-          { type: "product_card", sku: product.sku, name: product.name, listPrice: product.listPrice },
-          {
-            type: "ai_text",
-            text: `${product.name} ราคาส่ง ${formatBaht(product.listPrice)} ต่อชิ้นครับ ต้องการกี่ชิ้น และอยากได้ราคาเท่าไหร่ครับ`,
-          },
+          card,
+          { type: "ai_text", text: productIntroText(product) },
         ],
         {
           suggestions: [
@@ -93,17 +80,18 @@ export function mockRespond(state: ChatState, action: ChatAction, ctx: MockConte
       );
 
     case "confirm_offer": {
+      if (state.mode === "human") return state;
       const message = findOffers(state, action.messageId);
-      const offer = message?.offers.find((o) => o.id === message.selectedId);
+      const offer = message?.offers.find((o) => o.id === action.offerId);
       if (!message || !offer || message.confirmed) return state;
-      const product = lastProduct(state, ctx);
-      const confirmed = updateOffers(state, message.id, (m) => ({ ...m, confirmed: true }));
+      const product = ctx.products.find((p) => p.sku === message.sku);
+      const confirmed = updateOffers(state, message.id, (m) => ({ ...m, selectedId: offer.id, confirmed: true }));
       return append(
         confirmed,
         ctx,
         [
           { type: "buyer_text", text: `เลือกข้อ ${offer.id} · ${offer.label}`, inputMode: "text" },
-          { type: "order_summary", orderId: `demo-${offer.id}`, offer, productName: product?.name ?? "" },
+          { type: "order_summary", orderId: `demo-${offer.id}`, offer, productName: product?.name ?? message.sku },
         ],
         { suggestions: [{ label: "ต่อราคาสินค้าอื่น", action: { type: "open_products" } }] },
       );
@@ -131,48 +119,37 @@ function respondToText(
   // ส่งเรื่องให้เถ้าแก่แล้ว — เก็บข้อความไว้ให้เถ้าแก่อ่าน AI ไม่ตอบ
   if (state.mode === "human") return withBuyer;
 
+  const openOffers = lastOffers(state.messages);
+
+  // ใช้ข้อความชุดเดียวกับแชตจริง (replies.ts) — ต่างกันแค่ตัวตอบจำลองไม่ผ่าน Deal Engine
+  const replyCtx: ReplyContext = {
+    storefront: ctx.storefront,
+    buyerName: ctx.buyerName,
+    requestedPrice: null,
+    qty: null,
+    openOffers,
+  };
+  const noCounters = { belowFloorCount: 0, injectionCount: 0 };
+
   if (/ลืมคำสั่ง|ignore previous/i.test(text)) {
-    return append(
-      withBuyer,
-      ctx,
-      [
-        {
-          type: "ai_text",
-          text: "ราคานี้เฮียให้ไม่ได้ครับ ราคาทุกข้อเสนอคำนวณจากระบบของร้าน ผู้ช่วยเปลี่ยนเองไม่ได้ ถ้าอยากได้ราคาดีขึ้น ยังเลือกจาก 3 ทางเดิมได้เลยครับ",
-          cta: "show_offers",
-        },
-        { type: "system", kind: "price_locked" },
-      ],
-      { suggestions: TRADE_OFF_CHIPS },
-    );
+    const { messages } = replyFor({ kind: "guard", state: noCounters }, replyCtx);
+    return append(withBuyer, ctx, messages, { suggestions: tradeOffChips(openOffers) });
   }
 
   if (/ต้นทุน/.test(text)) {
-    return append(
-      withBuyer,
-      ctx,
-      [
-        {
-          type: "ai_text",
-          text: "ต้นทุนเป็นข้อมูลภายในร้าน บอกไม่ได้ครับ แต่ถ้าบอกจำนวนกับวิธีจ่ายเงิน เดี๋ยวหาข้อเสนอที่คุ้มที่สุดให้ครับ",
-        },
-      ],
-      { suggestions: TRADE_OFF_CHIPS },
-    );
+    const { messages } = replyFor({ kind: "not_negotiation", state: noCounters }, { ...replyCtx, asksCost: true });
+    return append(withBuyer, ctx, messages, { suggestions: tradeOffChips(openOffers) });
   }
 
   if (/คืนเงิน|ของเสีย/.test(text)) {
-    const { ownerName } = ctx.storefront;
+    const [apology] = replyFor(
+      { kind: "escalate", reason: "refund", brief: ["", "", ""], state: noCounters },
+      replyCtx,
+    ).messages;
     return append(
       withBuyer,
       ctx,
-      [
-        {
-          type: "ai_text",
-          text: `ขอโทษด้วยครับ${ctx.buyerName} เรื่องคืนเงิน${ownerName}ดูแลเองครับ ผมส่งเรื่องให้เฮียแล้ว`,
-        },
-        { type: "handoff", subject: "ขอคืนเงิน · ของเสีย 50 ชิ้น", orderRef: ctx.storefront.orderRefPlaceholder },
-      ],
+      [apology, { type: "handoff", subject: "ขอคืนเงิน · ของเสีย 50 ชิ้น", orderRef: ctx.storefront.orderRefPlaceholder }],
       { mode: "human" },
     );
   }
@@ -186,13 +163,14 @@ function respondToText(
           ...(action.inputMode === "voice" ? [{ type: "system", kind: "voice_unavailable" } as Draft] : []),
           { type: "ai_text", text: reply },
         ];
-  return append(withBuyer, ctx, [...spoken, { type: "offers", offers: MOCK_OFFERS }]);
+  const sku = lastProductSku(state) ?? ctx.products[0]?.sku ?? "";
+  return append(withBuyer, ctx, [...spoken, { type: "offers", sku, offers: MOCK_OFFERS }]);
 }
 
-const TRADE_OFF_CHIPS: Suggestion[] = [
-  { label: "สั่ง 1,500 ชิ้น", action: { type: "send", text: "สั่ง 1,500 ชิ้น", inputMode: "text" } },
-  { label: "จ่ายสด", action: { type: "send", text: "จ่ายสด", inputMode: "text" } },
-];
+function lastProductSku(state: ChatState): string | undefined {
+  const card = [...state.messages].reverse().find((m) => m.type === "product_card");
+  return card?.type === "product_card" ? card.sku : undefined;
+}
 
 function findOffers(state: ChatState, id: string): ChatMessageOf<"offers"> | undefined {
   const m = state.messages.find((x) => x.id === id);
@@ -209,10 +187,4 @@ function updateOffers(
     ...state,
     messages: state.messages.map((m) => (m.id === id && m.type === "offers" ? fn(m) : m)),
   };
-}
-
-function lastProduct(state: ChatState, ctx: MockContext): PublicProduct | undefined {
-  const card = [...state.messages].reverse().find((m) => m.type === "product_card");
-  const sku = card?.type === "product_card" ? card.sku : ctx.products[0]?.sku;
-  return ctx.products.find((p) => p.sku === sku);
 }

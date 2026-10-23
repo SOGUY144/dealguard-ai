@@ -19,7 +19,7 @@ async function makeUser(role: "buyer" | "owner", displayName: string) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { display_name: displayName },
+    user_metadata: { display_name: displayName, privacy_accepted: true },
   });
   if (error) throw error;
   created.push(data.user.id);
@@ -91,6 +91,41 @@ beforeAll(async () => {
 afterAll(async () => {
   // ลบผู้ใช้ → profiles/chats/messages/offers ถูกลบตาม (on delete cascade)
   await Promise.all(created.map((id) => admin.auth.admin.deleteUser(id)));
+});
+
+describe("สมัครสมาชิก (trigger handle_new_user)", () => {
+  const signupDirect = (metadata: Record<string, unknown>) =>
+    createClient(url, publishable, { auth: { persistSession: false } }).auth.signUp({
+      email: `rls-signup-${randomBytes(4).toString("hex")}@dealguard.test`,
+      password: randomBytes(12).toString("base64url"),
+      options: { data: metadata },
+    });
+
+  it("เรียก API สมัครตรงโดยไม่ยอมรับนโยบาย → สมัครไม่ได้", async () => {
+    const { data, error } = await signupDirect({ display_name: "แอบสมัคร" });
+    if (data.user) created.push(data.user.id);
+    expect(error).not.toBeNull();
+  });
+
+  it("ส่งวันที่ยอมรับย้อนหลังมาเอง → ใช้เวลาของ server แทน", async () => {
+    const before = Date.now();
+    const { data, error } = await signupDirect({
+      display_name: "ทดสอบเวลา",
+      privacy_accepted: true,
+      privacy_accepted_at: "2001-01-01T00:00:00Z",
+    });
+    expect(error).toBeNull();
+    created.push(data.user!.id);
+    const { data: profile } = await admin.from("profiles").select("privacy_accepted_at").eq("id", data.user!.id).single();
+    expect(new Date(profile!.privacy_accepted_at).getTime()).toBeGreaterThanOrEqual(before - 60_000);
+  });
+
+  it("ชื่อที่มีตัวอักษรควบคุม (ขึ้นบรรทัด) ถูกล้างออก", async () => {
+    const { data } = await signupDirect({ display_name: "คุณ\nนก\t", privacy_accepted: true });
+    created.push(data.user!.id);
+    const { data: profile } = await admin.from("profiles").select("display_name").eq("id", data.user!.id).single();
+    expect(profile?.display_name).toBe("คุณนก");
+  });
 });
 
 describe("profiles", () => {

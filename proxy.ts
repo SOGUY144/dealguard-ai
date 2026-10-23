@@ -31,6 +31,9 @@ export async function proxy(request: NextRequest) {
     signedIn: Boolean(data?.claims?.sub),
   });
   if (decision === "allow") return response;
+  if (decision === "unauthorized") {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+  }
 
   // redirect ต้องพก cookie ที่เพิ่งต่ออายุไปด้วย ไม่งั้นผู้ใช้หลุดจากระบบ
   const redirect = NextResponse.redirect(new URL(decision.redirect, request.url));
@@ -43,6 +46,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // ข้ามไฟล์ static และรูปภาพ
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp3)$).*)"],
+  // ข้ามเฉพาะไฟล์ build ของ Next — ห้ามข้ามตามนามสกุล (.png / .mp3) ไม่งั้น route ที่ลงท้ายแบบนั้นจะไม่ถูกเช็กล็อกอิน
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

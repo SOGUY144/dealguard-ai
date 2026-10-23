@@ -3,7 +3,7 @@
 import { ArrowRight, LayoutGrid, LoaderCircle, Mic, Square } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { buttonClass } from "@/components/ui/button";
-import type { Suggestion } from "@/lib/chat/mock-responder";
+import type { Suggestion } from "@/lib/chat/actions";
 import { cn } from "@/lib/cn";
 
 export type VoiceState = "idle" | "recording" | "transcribing";
@@ -13,7 +13,12 @@ type Props = {
   suggestions: Suggestion[];
   productsOpen: boolean;
   voiceState: VoiceState;
-  onSend: (text: string) => void;
+  /** รอคำตอบอยู่ — ส่งเพิ่มไม่ได้ (พิมพ์รอไว้ได้) */
+  busy?: boolean;
+  /** false = ยังไม่มีการแปลงเสียงจริง (แชตจริงก่อนเฟส 6) ปุ่มไมค์กดไม่ได้ */
+  micAvailable?: boolean;
+  /** คืน false = ส่งไม่สำเร็จ → คืนข้อความไว้ในช่องพิมพ์ */
+  onSend: (text: string) => void | Promise<boolean>;
   onSuggestion: (suggestion: Suggestion) => void;
   onToggleProducts: () => void;
   /** กดครั้งแรก = เริ่มอัด, กดอีกครั้ง = หยุดแล้วส่ง */
@@ -31,6 +36,8 @@ export function Composer({
   suggestions,
   productsOpen,
   voiceState,
+  busy = false,
+  micAvailable = true,
   onSend,
   onSuggestion,
   onToggleProducts,
@@ -42,9 +49,14 @@ export function Composer({
   function submit(e: FormEvent) {
     e.preventDefault();
     const value = text.trim();
-    if (!value) return;
-    onSend(value);
+    if (!value || busy) return;
+    const result = onSend(value);
     setText("");
+    if (result instanceof Promise) {
+      void result.then((ok) => {
+        if (!ok) setText((current) => current || value);
+      });
+    }
   }
 
   const recording = voiceState === "recording";
@@ -58,6 +70,7 @@ export function Composer({
               key={s.label}
               type="button"
               onClick={() => onSuggestion(s)}
+              disabled={busy && s.action.type === "send"}
               className={buttonClass("chip", "min-h-10 justify-start whitespace-normal md:px-4 md:text-sm")}
             >
               {s.label}
@@ -99,9 +112,9 @@ export function Composer({
           </button>
           <button
             type="button"
-            aria-label={recording ? "หยุดและส่งเสียง" : "พูดด้วยเสียง"}
+            aria-label={recording ? "หยุดและส่งเสียง" : micAvailable ? "พูดด้วยเสียง" : "พูดด้วยเสียง (ยังไม่เปิดใช้)"}
             onClick={onMicPress}
-            disabled={voiceState === "transcribing"}
+            disabled={!micAvailable || voiceState === "transcribing"}
             className={cn(
               buttonClass("ghost", "size-11 p-0 md:size-10"),
               recording && "bg-accent-tint text-accent-ink ring-2 ring-accent-border motion-safe:animate-pulse",
@@ -119,6 +132,7 @@ export function Composer({
           <button
             type="submit"
             aria-label="ส่งข้อความ"
+            aria-disabled={busy || undefined}
             className={buttonClass("primary", "size-11 p-0 text-sm md:h-[42px] md:min-h-0 md:w-auto md:px-5")}
           >
             <span aria-hidden="true" className="hidden md:inline">

@@ -37,14 +37,17 @@ describe("buildScenario — ทุก state ในไฟล์ดีไซน์
   it("text = พิมพ์มา ตอบเป็นข้อความ", () => expect(lastTypes("text", 2)).toEqual(["ai_text", "offers"]));
   it("novoice = Mobile-NoVoice", () =>
     expect(lastTypes("novoice", 3)).toEqual(["system:voice_unavailable", "ai_text", "offers"]));
-  it("guard = Mobile-Guard (หลอก + ถามต้นทุน)", () =>
+  it("guard = Mobile-Guard (ต่อราคาแล้ว → หลอก + ถามต้นทุน)", () => {
     expect(lastTypes("guard", 5)).toEqual([
       "buyer_text",
       "ai_text",
       "system:price_locked",
       "buyer_text",
       "ai_text",
-    ]));
+    ]);
+    // ปุ่ม "ดูข้อเสนอ 3 ทางอีกครั้ง" ต้องมีข้อเสนอให้กลับไปดูจริง
+    expect(buildScenario("guard", ctx).messages.some((m) => m.type === "offers")).toBe(true);
+  });
   it("escalate = Mobile-Escalate", () => {
     const state = buildScenario("escalate", ctx);
     expect(state.mode).toBe("human");

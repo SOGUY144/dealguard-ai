@@ -15,7 +15,7 @@ import { VoiceBubble } from "./voice-bubble";
 
 export type ThreadHandlers = {
   onSelectOffer: (messageId: string, offerId: Offer["id"]) => void;
-  onConfirmOffer: (messageId: string) => void;
+  onConfirmOffer: (messageId: string, offerId: Offer["id"]) => void;
   onOpenProducts: () => void;
   onShowOffers: () => void;
 };
@@ -24,6 +24,8 @@ type Props = ThreadHandlers & {
   messages: ChatMessage[];
   storefront: Storefront;
   buyerName: string;
+  /** รอคำตอบจาก server */
+  pending?: boolean;
 };
 
 /** element id ของข้อความ — ใช้เลื่อนกลับไปหาข้อเสนอ */
@@ -32,7 +34,7 @@ export const messageElementId = (id: string) => `msg-${id}`;
 // ข้อความ AI ที่ต้องกว้างกว่าฟองปกติ (เสียง, ข้อเสนอ, ใบสรุป, การ์ดส่งเรื่อง)
 const WIDE = new Set<ChatMessage["type"]>(["ai_voice", "offers", "order_summary", "handoff"]);
 
-export function ChatThread({ messages, storefront, buyerName, ...handlers }: Props) {
+export function ChatThread({ messages, storefront, buyerName, pending = false, ...handlers }: Props) {
   const rows = groupMessages(messages);
   const lastOffers = [...messages].reverse().find((m) => m.type === "offers");
 
@@ -55,9 +57,35 @@ export function ChatThread({ messages, storefront, buyerName, ...handlers }: Pro
           storefront={storefront}
           buyerName={buyerName}
           offersShown={lastOffers?.type === "offers" ? lastOffers.offers.length : 3}
+          lastOffersId={lastOffers?.id}
+          busy={pending}
           {...handlers}
         />
       ))}
+      {pending && <TypingRow />}
+    </div>
+  );
+}
+
+/** ผู้ช่วยกำลังตอบ — ไม่มีในไฟล์ดีไซน์ ทำให้เข้าชุดกับฟอง AI */
+function TypingRow() {
+  return (
+    <div className="flex items-start gap-2 md:gap-2.5">
+      <AiAvatar variant="message" />
+      <span
+        role="status"
+        aria-label="ผู้ช่วยกำลังตอบ"
+        className="bubble-ai flex h-10 items-center gap-1.5 px-4"
+      >
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            aria-hidden="true"
+            className="size-1.5 rounded-full bg-accent motion-safe:animate-bounce"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </span>
     </div>
   );
 }
@@ -67,9 +95,12 @@ type RowProps = ThreadHandlers & {
   storefront: Storefront;
   buyerName: string;
   offersShown: number;
+  /** ข้อเสนอชุดล่าสุด — ชุดเก่ากดไม่ได้ กันยืนยันซ้อนกัน */
+  lastOffersId?: string;
+  busy: boolean;
 };
 
-function Row({ row, storefront, buyerName, offersShown, ...handlers }: RowProps) {
+function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, ...handlers }: RowProps) {
   const first = row.messages[0];
 
   if (row.kind === "notice") {
@@ -105,7 +136,15 @@ function Row({ row, storefront, buyerName, offersShown, ...handlers }: RowProps)
           <span className="font-semibold text-ink">{storefront.assistantName}</span> · {formatClock(first.at)}
         </span>
         {row.messages.map((m) => (
-          <AiItem key={m.id} message={m} storefront={storefront} offersShown={offersShown} {...handlers} />
+          <AiItem
+            key={m.id}
+            message={m}
+            storefront={storefront}
+            offersShown={offersShown}
+            stale={m.type === "offers" && m.id !== lastOffersId}
+            busy={busy}
+            {...handlers}
+          />
         ))}
       </div>
     </div>
@@ -116,11 +155,19 @@ function AiItem({
   message: m,
   storefront,
   offersShown,
+  stale,
+  busy,
   onSelectOffer,
   onConfirmOffer,
   onOpenProducts,
   onShowOffers,
-}: ThreadHandlers & { message: ChatMessage; storefront: Storefront; offersShown: number }) {
+}: ThreadHandlers & {
+  message: ChatMessage;
+  storefront: Storefront;
+  offersShown: number;
+  stale: boolean;
+  busy: boolean;
+}) {
   switch (m.type) {
     case "ai_text":
       if (m.cta === "open_products") return <AiBubbleWithProductsCta text={m.text} onOpenProducts={onOpenProducts} />;
@@ -153,9 +200,10 @@ function AiItem({
             offers={m.offers}
             ownerName={storefront.ownerName}
             selectedId={m.selectedId}
-            confirmed={m.confirmed}
+            confirmed={m.confirmed || stale}
+            busy={busy}
             onSelect={(offerId) => onSelectOffer(m.id, offerId)}
-            onConfirm={() => onConfirmOffer(m.id)}
+            onConfirm={() => m.selectedId && onConfirmOffer(m.id, m.selectedId)}
           />
         </div>
       );

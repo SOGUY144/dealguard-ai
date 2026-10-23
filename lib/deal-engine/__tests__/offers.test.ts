@@ -6,7 +6,7 @@ import { cable, config } from "./fixtures";
 const example = { requestedPrice: 125, qty: 1000 };
 
 describe("buildOffers — ตัวอย่างใน SKILL (ขอ ฿125 × 1,000)", () => {
-  const offers = buildOffers(cable, config, example).map((p) => p.offer);
+  const offers = buildOffers(cable, config, example).offers.map((p) => p.offer);
 
   it("ได้ 3 ข้อเสนอเรียง A ซื้อเยอะ / B จ่ายสด / C รับของแถม", () => {
     expect(offers.map((o) => [o.id, o.lever, o.label])).toEqual([
@@ -48,7 +48,7 @@ describe("buildOffers — ตัวอย่างใน SKILL (ขอ ฿125 ×
   });
 
   it("แนบตัวเลขหลังบ้านของแต่ละข้อเสนอ", () => {
-    const recovered = buildOffers(cable, config, example).map((p) =>
+    const recovered = buildOffers(cable, config, example).offers.map((p) =>
       Math.round(p.economics.recoveredMargin),
     );
     expect(recovered).toEqual([20_000, 11_332, 17_000]);
@@ -57,18 +57,18 @@ describe("buildOffers — ตัวอย่างใน SKILL (ขอ ฿125 ×
 
 describe("buildOffers — กรณีอื่น", () => {
   it("ลูกค้าขอต่ำกว่าราคาพื้น ทุกข้อเสนอยังไม่ต่ำกว่า ฿120", () => {
-    const offers = buildOffers(cable, config, { requestedPrice: 90, qty: 1000 });
+    const { offers } = buildOffers(cable, config, { requestedPrice: 90, qty: 1000 });
     expect(offers.length).toBeGreaterThan(0);
     for (const { offer } of offers) expect(offer.pricePerUnit).toBeGreaterThanOrEqual(120);
   });
 
   it("ไม่ให้ราคาต่ำกว่าที่ลูกค้าขอเอง แม้ tier จะถูกกว่า", () => {
-    const [volume] = buildOffers(cable, config, { requestedPrice: 135, qty: 1000 });
+    const [volume] = buildOffers(cable, config, { requestedPrice: 135, qty: 1000 }).offers;
     expect(volume.offer).toMatchObject({ lever: "volume", pricePerUnit: 135, qty: 1500 });
   });
 
   it("ไม่มี tier ที่ใหญ่กว่าจำนวนที่ขอ → ไม่มีข้อเสนอซื้อเยอะ และไล่ id ใหม่", () => {
-    const offers = buildOffers(cable, config, { requestedPrice: 125, qty: 3000 }).map((p) => p.offer);
+    const offers = buildOffers(cable, config, { requestedPrice: 125, qty: 3000 }).offers.map((p) => p.offer);
     expect(offers.map((o) => [o.id, o.lever])).toEqual([
       ["A", "cash"],
       ["B", "bundle"],
@@ -77,13 +77,13 @@ describe("buildOffers — กรณีอื่น", () => {
 
   it("ข้าม tier ที่ราคาต่ำกว่าราคาพื้น", () => {
     const risky: Product = { ...cable, volumeTiers: [{ minQty: 3000, price: 115 }] };
-    const offers = buildOffers(risky, config, { requestedPrice: 125, qty: 1000 });
+    const { offers } = buildOffers(risky, config, { requestedPrice: 125, qty: 1000 });
     expect(offers.some((p) => p.offer.lever === "volume")).toBe(false);
   });
 
   it("ของแถมไม่เกินจำนวนที่เหลือในสต๊อก", () => {
     // 2,900 × (145 − 135) / 50 = 580 ชิ้น แต่เหลือแค่ 500
-    const bundle = buildOffers(cable, config, { requestedPrice: 125, qty: 2900 }).find(
+    const bundle = buildOffers(cable, config, { requestedPrice: 125, qty: 2900 }).offers.find(
       (p) => p.offer.lever === "bundle",
     );
     expect(bundle?.offer.bundle?.qty).toBe(500);
@@ -91,19 +91,19 @@ describe("buildOffers — กรณีอื่น", () => {
 
   it("ไม่มีของค้างสต๊อก → ไม่มีข้อเสนอของแถม", () => {
     const noStock: MerchantConfig = { ...config, deadStock: [] };
-    const offers = buildOffers(cable, noStock, example);
+    const { offers } = buildOffers(cable, noStock, example);
     expect(offers.some((p) => p.offer.lever === "bundle")).toBe(false);
   });
 
   it("ราคาของแถมปัดเป็นบาทเต็ม", () => {
-    const bundle = buildOffers(cable, config, { requestedPrice: 127, qty: 1000 }).find(
+    const bundle = buildOffers(cable, config, { requestedPrice: 127, qty: 1000 }).offers.find(
       (p) => p.offer.lever === "bundle",
     );
     expect(bundle?.offer.pricePerUnit).toBe(145);
   });
 
   it("ไม่บอกราคา → คิดเหมือนขอที่ราคาพื้น และ baseline ใช้ราคาขาย", () => {
-    const offers = buildOffers(cable, config, { requestedPrice: null, qty: 1000 });
+    const { offers } = buildOffers(cable, config, { requestedPrice: null, qty: 1000 });
     const bundle = offers.find((p) => p.offer.lever === "bundle");
     expect(bundle?.offer.pricePerUnit).toBe(144);
     expect(offers[0].economics.marginIfConceded).toBe(50_000);

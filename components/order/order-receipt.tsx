@@ -38,6 +38,7 @@ export function OrderReceipt({ order, storefront }: Props) {
           <Row label="สินค้า" value={order.productName} />
           <Row label="ข้อเสนอที่เลือก" value={`${offer.id} · ${offer.label}`} />
           <Row label="จำนวน × ราคา" value={`${formatQty(offer.qty)} × ${formatBaht(offer.pricePerUnit)}`} />
+          {offer.bundle && <Row label="ของแถม" value={`${offer.bundle.name} ${formatQty(offer.bundle.qty)} ชิ้น`} />}
           <Row label="การชำระเงิน" value={formatCredit(offer.creditDays)} />
           <div className="flex items-baseline justify-between gap-3 py-3.5">
             <dt className="font-semibold">ยอดรวม</dt>

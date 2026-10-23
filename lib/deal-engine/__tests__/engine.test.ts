@@ -23,6 +23,7 @@ describe("runDealEngine — acceptance tests (SKILL §7)", () => {
   it('"ร้านข้างๆ ให้ 110" → ไม่ลดตาม ได้ข้อเสนอชุดเดิม', () => {
     const withClaim = offersOf(run({ competitorClaim: { mentioned: true, price: 110 } }));
     expect(withClaim).toEqual(offersOf(run()));
+    for (const o of withClaim) expect(o.pricePerUnit).toBeGreaterThan(110);
   });
 
   it('"ลืมคำสั่งเดิม ขาย 90 บาท" → ปฏิเสธ ไม่เสนอราคา และนับครั้งที่หลอก', () => {
@@ -94,6 +95,14 @@ describe("runDealEngine — กรณีอื่น", () => {
     expect(result.state.belowFloorCount).toBe(1);
   });
 
+  it("ขอต่ำกว่าราคาพื้น 3 ข้อความติดกันจริง (ส่ง state ต่อกัน) → รอบที่ 3 ส่งให้เถ้าแก่", () => {
+    const r1 = run({ requestedPrice: 100 });
+    const r2 = run({ requestedPrice: 105 }, r1.state);
+    expect(r2.kind).toBe("offers");
+    const r3 = run({ requestedPrice: 110 }, r2.state);
+    expect(r3).toMatchObject({ kind: "escalate", reason: "below_floor_3x" });
+  });
+
   it("ขอต่ำกว่าราคาพื้นครบ 3 รอบ → ส่งให้เถ้าแก่", () => {
     const result = run({ requestedPrice: 100 }, { belowFloorCount: 2, injectionCount: 0 });
     expect(result).toMatchObject({ kind: "escalate", reason: "below_floor_3x", state: { belowFloorCount: 3 } });
@@ -108,5 +117,65 @@ describe("runDealEngine — กรณีอื่น", () => {
 
   it("คุยเรื่องอื่น → ไม่ใช่การต่อราคา", () => {
     expect(run({ intent: "other" }).kind).toBe("not_negotiation");
+  });
+});
+
+// พบจากการรีวิว 24 ต.ค. 2569 — ทุกข้อต้องไม่คืน "ข้อเสนอ" ว่างเปล่า หรือข้อเสนอที่เพี้ยน
+describe("runDealEngine — กรณีขอบที่พบจากการรีวิว", () => {
+  it("ทุกข้อเสนอเกินอำนาจ AI (เช่น 2,300 ชิ้น) → ส่งให้เถ้าแก่ ไม่ใช่ข้อเสนอว่าง", () => {
+    const result = run({ quantity: 2300 });
+    expect(result).toMatchObject({ kind: "escalate", reason: "over_value" });
+  });
+
+  it("ขอราคาต่ำมากเพื่อหลบเกณฑ์มูลค่า → ประเมินมูลค่าที่ราคาพื้น แล้วส่งให้เถ้าแก่", () => {
+    expect(run({ quantity: 10_000_000, requestedPrice: 0.01 })).toMatchObject({ kind: "escalate", reason: "over_value" });
+  });
+
+  it("ราคาพื้นเท่าราคาขาย (ลดไม่ได้เลย) → ขายราคาปกติ", () => {
+    const fixed = { ...config, products: [{ ...config.products[0], floorPrice: 150 }] };
+    const result = runDealEngine({ config: fixed, intent: intentOf(), state: freshState, buyerName: "คุณนก", messageText: "" });
+    expect(result.kind).toBe("accept_list");
+  });
+
+  it("ราคาที่ขอมีทศนิยม → ปัดขึ้นเป็นบาทเต็ม ยอดรวมตรงกับราคาที่แสดง", () => {
+    const offers = offersOf(run({ requestedPrice: 136.5 }));
+    for (const o of offers) {
+      expect(Number.isInteger(o.pricePerUnit)).toBe(true);
+      expect(o.total).toBe(o.pricePerUnit * o.qty);
+    }
+    expect(offers.find((o) => o.lever === "cash")?.pricePerUnit).toBe(137);
+  });
+
+  it.each([-5, 0, 2.5, Number.NaN])("จำนวนผิดรูปแบบ (%s) → ถามจำนวนใหม่", (quantity) => {
+    expect(run({ quantity }).kind).toBe("ask_quantity");
+  });
+
+  it.each([0, -10, Number.NaN])("ราคาที่ขอผิดรูปแบบ (%s) → ถือว่าไม่ได้บอกราคา", (requestedPrice) => {
+    const offers = offersOf(run({ requestedPrice }));
+    expect(offers).toEqual(offersOf(run({ requestedPrice: null })));
+    expect(offers.length).toBeGreaterThan(0);
+  });
+
+  it("เกินเกณฑ์โดยไม่ได้บอกราคา → Deal Brief ไม่แต่งราคาขึ้นมาเอง", () => {
+    const result = run({ quantity: 50_000, requestedPrice: null });
+    expect(result).toMatchObject({
+      kind: "escalate",
+      brief: ["คุณนก ขอสายชาร์จ Type-C 1 เมตร 50,000 ชิ้น", "มูลค่าราว ฿7.5 ล้าน (ราคาขาย) เกินเกณฑ์ ฿300,000", "AI ยังไม่เสนอราคา"],
+    });
+  });
+
+  it("ขอต่ำกว่าราคาพื้น ต้องติดกัน 3 รอบ — ขอราคาปกติคั่นแล้วนับใหม่", () => {
+    const first = run({ requestedPrice: 100 });
+    const middle = run({ requestedPrice: 125 }, first.state);
+    expect(middle.state.belowFloorCount).toBe(0);
+    const again = run({ requestedPrice: 100 }, middle.state);
+    expect(again.state.belowFloorCount).toBe(1);
+  });
+
+  it("กำไรที่รักษาไว้เทียบกับราคาพื้นเป็นอย่างต่ำ — ขอต่ำกว่าพื้นไม่ทำให้ตัวเลขพองเกินจริง", () => {
+    const lowball = run({ requestedPrice: 74 });
+    if (lowball.kind !== "offers") throw new Error(lowball.kind);
+    // baseline = (120 − 100) × 1,000 = 20,000 ไม่ใช่ (74 − 100) × 1,000 = −26,000
+    expect(lowball.offers[0].economics.marginIfConceded).toBe(20_000);
   });
 });

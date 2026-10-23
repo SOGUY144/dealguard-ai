@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { initialChatState, mockRespond, type ChatAction, type MockContext, type Suggestion } from "@/lib/chat/mock-responder";
-import { buildScenario, type ScenarioName } from "@/lib/chat/scenarios";
+import type { Suggestion } from "@/lib/chat/actions";
+import type { MockContext } from "@/lib/chat/mock-responder";
+import type { ScenarioName } from "@/lib/chat/scenarios";
 import type { PublicProduct, Storefront } from "@/lib/chat/types";
 import { DESKTOP_QUERY, useMediaQuery } from "@/lib/use-media-query";
 import { ChatHeader } from "./chat-header";
@@ -10,6 +11,7 @@ import { ChatThread, messageElementId } from "./chat-thread";
 import { Composer, type VoiceState } from "./composer";
 import { ProductDrawer, ProductSheet } from "./product-panel";
 import { StoreHeader } from "./store-header";
+import { useChatSession, type LiveChat } from "./use-chat-session";
 
 type Props = {
   storefront: Storefront;
@@ -19,6 +21,8 @@ type Props = {
   scenario?: ScenarioName;
   /** แสดงปุ่มออกจากระบบ (ผู้ใช้ล็อกอินอยู่) */
   canLogout?: boolean;
+  /** แชตจริงผ่าน /api/chat (ไม่ใส่ = ตัวตอบจำลอง) — scenario ชนะเสมอ */
+  live?: LiveChat;
 };
 
 // เฟส 2: ยังไม่มีไมค์จริง จำลองว่าแปลงเสียงได้ประโยคเดโมนี้ (เฟส 6 ใช้ STT จริง)
@@ -26,9 +30,22 @@ const MOCK_TRANSCRIPT = "ขอ 125 ได้ไหมคะ 1,000 ชิ้น 
 const MOCK_TRANSCRIBE_MS = 1200;
 
 /** หน้าแชตลูกค้า (Main / Mobile-*) — responsive หน้าเดียว breakpoint 768px */
-export function ChatScreen({ storefront, products, buyerName, scenario, canLogout }: Props) {
+function scrollToMessage(id: string) {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(messageElementId(id))?.scrollIntoView({
+    behavior: reduce ? "auto" : "smooth",
+    block: "center",
+  });
+}
+
+export function ChatScreen({ storefront, products, buyerName, scenario, canLogout, live }: Props) {
   const ctx: MockContext = { storefront, products, buyerName, now: () => new Date().toISOString() };
-  const [chat, setChat] = useState(() => (scenario ? buildScenario(scenario, ctx) : initialChatState(ctx)));
+  const { view: chat, pending, dispatch } = useChatSession({
+    live: scenario ? undefined : live,
+    scenario,
+    mockContext: ctx,
+    onFocus: scrollToMessage,
+  });
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -36,8 +53,6 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   useEffect(() => () => clearTimeout(transcribeTimer.current), []);
-
-  const dispatch = (action: ChatAction) => setChat((state) => mockRespond(state, action, ctx));
 
   const lastOf = <T extends string>(type: T) => [...chat.messages].reverse().find((m) => m.type === type);
   const activeCard = lastOf("product_card");
@@ -54,23 +69,20 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
   }
 
   function askAbout(sku: string) {
-    dispatch({ type: "pick_product", sku });
+    void dispatch({ type: "pick_product", sku });
     setSheetOpen(false);
   }
 
   function showOffers() {
     const offers = lastOf("offers");
-    if (!offers) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document.getElementById(messageElementId(offers.id))?.scrollIntoView({
-      behavior: reduce ? "auto" : "smooth",
-      block: "center",
-    });
+    if (offers) scrollToMessage(offers.id);
   }
 
   function onSuggestion(s: Suggestion) {
-    if (s.action.type === "open_products") openProducts();
-    else dispatch(s.action);
+    if (s.action.type === "open_products") return openProducts();
+    void dispatch(s.action);
+    // chip ที่เลือกข้อเสนอเดิม → พาไปดูการ์ดข้อเสนอที่ถูกเลือก
+    if (s.action.type === "select_offer") scrollToMessage(s.action.messageId);
   }
 
   function onMicPress() {
@@ -82,7 +94,7 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
       setVoiceState("transcribing");
       clearTimeout(transcribeTimer.current);
       transcribeTimer.current = setTimeout(() => {
-        dispatch({ type: "send", text: MOCK_TRANSCRIPT, inputMode: "voice" });
+        void dispatch({ type: "send", text: MOCK_TRANSCRIPT, inputMode: "voice" });
         setVoiceState("idle");
       }, MOCK_TRANSCRIBE_MS);
     }
@@ -112,7 +124,8 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
         >
           <ChatHeader
             assistantName={storefront.assistantName}
-            onTalkToHuman={() => dispatch({ type: "talk_to_human" })}
+            onTalkToHuman={() => void dispatch({ type: "talk_to_human" })}
+            busy={pending}
             canLogout={canLogout}
           />
 
@@ -122,8 +135,9 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
               messages={chat.messages}
               storefront={storefront}
               buyerName={buyerName}
-              onSelectOffer={(messageId, offerId) => dispatch({ type: "select_offer", messageId, offerId })}
-              onConfirmOffer={(messageId) => dispatch({ type: "confirm_offer", messageId })}
+              pending={pending}
+              onSelectOffer={(messageId, offerId) => void dispatch({ type: "select_offer", messageId, offerId })}
+              onConfirmOffer={(messageId, offerId) => void dispatch({ type: "confirm_offer", messageId, offerId })}
               onOpenProducts={openProducts}
               onShowOffers={showOffers}
             />
@@ -134,6 +148,9 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
             suggestions={chat.suggestions}
             productsOpen={isDesktop ? drawerOpen : sheetOpen}
             voiceState={voiceState}
+            busy={pending}
+            // แชตจริงยังไม่มีการแปลงเสียง — ห้ามส่งประโยคเดโมเข้าแชตของลูกค้า (เฟส 6 ใช้ STT จริง)
+            micAvailable={!live || Boolean(scenario)}
             onSend={(text) => dispatch({ type: "send", text, inputMode: "text" })}
             onSuggestion={onSuggestion}
             onToggleProducts={toggleProducts}
@@ -142,12 +159,24 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
         </section>
 
         {drawerOpen && (
-          <ProductDrawer products={products} activeSku={activeSku} onAsk={askAbout} onClose={() => setDrawerOpen(false)} />
+          <ProductDrawer
+            products={products}
+            activeSku={activeSku}
+            onAsk={askAbout}
+            onClose={() => setDrawerOpen(false)}
+            busy={pending}
+          />
         )}
       </main>
 
       {sheetShowing && (
-        <ProductSheet products={products} activeSku={activeSku} onAsk={askAbout} onClose={() => setSheetOpen(false)} />
+        <ProductSheet
+          products={products}
+          activeSku={activeSku}
+          onAsk={askAbout}
+          onClose={() => setSheetOpen(false)}
+          busy={pending}
+        />
       )}
     </div>
   );

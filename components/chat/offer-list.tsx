@@ -11,12 +11,14 @@ type Props = {
   ownerName: string;
   selectedId?: Offer["id"];
   confirmed?: boolean;
+  /** รอคำตอบอยู่ — ปุ่มยืนยันกดไม่ได้ (เลือกข้อได้ เพราะเกิดในเครื่อง) */
+  busy?: boolean;
   onSelect: (id: Offer["id"]) => void;
   onConfirm: () => void;
 };
 
 /** ข้อเสนอ A/B/C จาก Deal Engine — UI แสดงตัวเลขตามที่ได้รับเท่านั้น ไม่คำนวณเอง (HANDOFF §6) */
-export function OfferList({ offers, ownerName, selectedId, confirmed, onSelect, onConfirm }: Props) {
+export function OfferList({ offers, ownerName, selectedId, confirmed, busy = false, onSelect, onConfirm }: Props) {
   const headingId = useId();
   const selected = offers.find((o) => o.id === selectedId);
 
@@ -37,7 +39,7 @@ export function OfferList({ offers, ownerName, selectedId, confirmed, onSelect, 
         ))}
       </div>
       {selected && !confirmed && (
-        <Button variant="primary" className="h-[46px] text-sm" onClick={onConfirm}>
+        <Button variant="primary" className="h-[46px] text-sm" onClick={onConfirm} disabled={busy}>
           ยืนยันข้อ {selected.id} · {formatBaht(selected.total)}
         </Button>
       )}
