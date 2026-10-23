@@ -1,0 +1,150 @@
+/* DealGuard AI — design tokens + glass utilities
+   import ใน app/globals.css:  @import "./tokens.css";
+   ฟอนต์: ใส่ใน layout ด้วย next/font/google -> IBM_Plex_Sans_Thai({ weight: ['300','400','500','600','700'], subsets: ['thai','latin'] }) */
+
+:root {
+  /* surfaces */
+  --bg: #F6F3FB;
+  --mesh-pink: #FBE4EF;
+  --mesh-lavender: #E4DAFB;
+  --mesh-blue: #DCE5FF;
+  --mesh-lilac: #EFE6FC;
+
+  /* text */
+  --ink: #2B2D3E;
+  --ink-2: #34364C;
+  --muted: #5F6178;
+  --on-dark-muted: #D6D3E6;
+
+  /* accent (violet) */
+  --accent: #7A5AE0;
+  --accent-hover: #6646CF;
+  --accent-ink: #5B3FC4;
+  --accent-ink-strong: #4B2FB0;
+  --accent-tint: #EFE9FD;
+  --accent-tint-2: #F4EFFE;
+  --accent-surface: #FAF8FE;
+  --accent-border: #D9CCF9;
+
+  /* lines */
+  --line: #E6DEF5;
+  --line-soft: #F1ECFA;
+
+  /* status */
+  --warn: #C2570C;
+  --warn-ink: #8A3C0B;
+  --warn-bg: #FDF0E6;
+  --ok-ink: #1D6B4A;
+  --ok-bg: #E3F4EB;
+
+  /* special */
+  --voice: #2B2D3E;
+  --chart-base: #3E9BD6;   /* ถ้ายอมลดตามที่ขอ */
+  --chart-ai: #7A5AE0;     /* ข้อเสนอที่ปิดได้ */
+  --tile-lavender: #EFE9FD;
+  --tile-blue: #DDEBFB;
+  --tile-mint: #DAF2E6;
+
+  /* shape */
+  --r-pill: 999px;
+  --r-card: 26px;
+  --r-card-sm: 18px;
+  --r-input: 14px;
+  --shadow-card: 0 16px 40px rgba(110, 90, 170, 0.10);
+  --shadow-soft: 0 8px 22px rgba(110, 90, 170, 0.10);
+
+  --font: 'IBM Plex Sans Thai', 'Leelawadee UI', Tahoma, sans-serif;
+}
+
+html, body { background: var(--bg); color: var(--ink); font-family: var(--font); font-variant-numeric: tabular-nums; }
+
+/* พื้นหลัง mesh ใช้กับ root ของทุกหน้า */
+.app-bg {
+  background:
+    radial-gradient(circle at 0% 0%, var(--mesh-pink) 0, rgba(251,228,239,0) 32%),
+    radial-gradient(circle at 100% 8%, var(--mesh-lavender) 0, rgba(228,218,251,0) 38%),
+    radial-gradient(circle at 70% 100%, var(--mesh-blue) 0, rgba(220,229,255,0) 40%),
+    radial-gradient(circle at 5% 90%, var(--mesh-lilac) 0, rgba(239,230,252,0) 35%),
+    var(--bg);
+}
+
+/* ลำดับ -webkit- ก่อน backdrop-filter ตั้งใจไว้: Lightning CSS (Tailwind v4) เก็บแค่ตัวหลังสุด
+   ถ้า -webkit- อยู่หลัง Chrome จะไม่มีเบลอเลย */
+
+/* การ์ดกระจกทั่วไป */
+.glass {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-card);
+}
+
+/* กระจกใสแบบ iOS — การ์ดตัวเลข (ต้องมีวงสีจางๆ ข้างหลัง) */
+.glass-clear {
+  background: linear-gradient(155deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.06) 48%, rgba(255,255,255,0.16) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.95),
+    inset 0 -1px 0 rgba(255,255,255,0.25),
+    inset 1px 0 0 rgba(255,255,255,0.35),
+    0 10px 30px rgba(110, 90, 170, 0.14);
+}
+
+/* header / bottom nav แคปซูลลอย */
+.glass-pill {
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 36px rgba(110, 90, 170, 0.10);
+}
+
+/* ปุ่มหลัก: กระจกขาวแต้มม่วง (ห้ามกลับไปใช้ม่วงทึบ) */
+.btn-primary {
+  min-height: 44px; padding: 0 22px; border-radius: var(--r-pill);
+  font-weight: 600; color: var(--accent-ink-strong);
+  background: linear-gradient(155deg, rgba(255,255,255,0.78) 0%, rgba(222,208,252,0.5) 50%, rgba(234,224,253,0.68) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    inset 0 -1px 0 rgba(255,255,255,0.4),
+    0 0 0 1px rgba(122,90,224,0.16),
+    0 8px 22px rgba(110, 90, 170, 0.16);
+}
+
+/* ปุ่มรอง: กระจกขาวใส */
+.btn-secondary {
+  min-height: 44px; padding: 0 18px; border-radius: var(--r-pill);
+  font-weight: 500; color: var(--accent-ink);
+  background: linear-gradient(155deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.36) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.95),
+    0 0 0 1px rgba(122,90,224,0.10),
+    0 4px 12px rgba(110, 90, 170, 0.08);
+}
+
+/* chip คำตอบด่วน */
+.chip {
+  min-height: 40px; padding: 6px 14px; border-radius: var(--r-pill);
+  background: #FFFFFF; color: var(--accent-ink);
+  border: 1.5px solid var(--accent-border); font-size: 13px; font-weight: 500;
+}
+
+/* ฟองข้อความ */
+.bubble-ai    { background: #FFFFFF; border: 1px solid var(--line-soft); border-radius: 6px 18px 18px 18px; padding: 10px 13px; line-height: 1.55; }
+.bubble-buyer { background: var(--accent-tint); border-radius: 18px 6px 18px 18px; padding: 10px 13px; line-height: 1.55; }
+.bubble-voice { background: var(--voice); color: #FFFFFF; border-radius: 18px; }
+
+/* ภาษาไทย: ห้าม letter-spacing, line-height ไม่ต่ำกว่า 1.4 */
+h1, h2, h3 { line-height: 1.4; letter-spacing: normal; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

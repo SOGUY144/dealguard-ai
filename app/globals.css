@@ -1,0 +1,52 @@
+@import "tailwindcss";
+/* ค่าสีและคลาสกระจกมาจากไฟล์ดีไซน์โดยตรง (design/tokens.css) — แก้ที่นั่นที่เดียว */
+@import "../design/tokens.css";
+
+/* ฟอนต์จาก next/font (ตั้งใน app/layout.tsx) แทนชื่อฟอนต์ใน tokens.css */
+:root {
+  --font: var(--font-plex-thai), "Leelawadee UI", Tahoma, sans-serif;
+}
+
+/* แปลงจาก design/tailwind.preset.js เป็น Tailwind v4 — อ้างตัวแปรใน tokens.css */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-strong: var(--accent-ink-strong);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-tint2: var(--accent-tint-2);
+  --color-accent-surface: var(--accent-surface);
+  --color-accent-border: var(--accent-border);
+
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+
+  --color-warn: var(--warn);
+  --color-warn-ink: var(--warn-ink);
+  --color-warn-bg: var(--warn-bg);
+  --color-ok-ink: var(--ok-ink);
+  --color-ok-bg: var(--ok-bg);
+
+  --color-voice: var(--voice);
+  --color-chart-base: var(--chart-base);
+  --color-chart-ai: var(--chart-ai);
+  --color-tile-lavender: var(--tile-lavender);
+  --color-tile-blue: var(--tile-blue);
+  --color-tile-mint: var(--tile-mint);
+
+  --font-sans: var(--font);
+
+  --radius-card: var(--r-card);
+  --radius-card-sm: var(--r-card-sm);
+  --radius-input: var(--r-input);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-soft: var(--shadow-soft);
+
+  --spacing-touch: 44px;
+}

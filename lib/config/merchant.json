@@ -1,0 +1,26 @@
+{
+  "merchantName": "ร้านเฮียชัยโมบาย",
+  "ownerDisplayName": "เฮียชัย",
+  "costOfCapitalAnnual": 0.12,
+  "escalationDealValue": 300000,
+  "bundleConcessionRatio": 0.2,
+  "products": [
+    {
+      "sku": "CBL-C-1M",
+      "name": "สายชาร์จ Type-C 1 เมตร",
+      "listPrice": 150,
+      "unitCost": 100,
+      "floorPrice": 120,
+      "volumeTiers": [
+        { "minQty": 500, "price": 140 },
+        { "minQty": 1500, "price": 130 },
+        { "minQty": 3000, "price": 125 }
+      ],
+      "cashDiscountPct": 0.1,
+      "defaultCreditDays": 30
+    }
+  ],
+  "deadStock": [
+    { "sku": "ADP-20W", "name": "หัวชาร์จ 20W", "unitCost": 15, "perceivedValue": 50, "qtyAvailable": 500 }
+  ]
+}

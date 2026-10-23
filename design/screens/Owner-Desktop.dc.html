@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>หน้าเถ้าแก่ (คอม)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#F6F3FB}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:#7A5AE0}a:hover{color:#6646CF}
+th,td{text-align:left;padding:13px 14px;border-bottom:1px solid #F1ECFA;white-space:nowrap}
+th{font-size:13px;font-weight:500;color:#5F6178}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans Thai', 'Leelawadee UI', Tahoma, sans-serif; color: #2B2D3E; background: radial-gradient(circle 150px at 25% 14%, rgba(186,160,250,0.47) 0, rgba(186,160,250,0) 100%), radial-gradient(circle 140px at 44% 19%, rgba(146,192,255,0.45) 0, rgba(146,192,255,0) 100%), radial-gradient(circle 130px at 62% 11%, rgba(255,186,218,0.45) 0, rgba(255,186,218,0) 100%), radial-gradient(circle 140px at 86% 16%, rgba(255,196,160,0.42) 0, rgba(255,196,160,0) 100%), radial-gradient(circle at 0% 0%, #FBE4EF 0, rgba(251,228,239,0) 32%), radial-gradient(circle at 100% 8%, #E4DAFB 0, rgba(228,218,251,0) 38%), radial-gradient(circle at 70% 100%, #DCE5FF 0, rgba(220,229,255,0) 40%), radial-gradient(circle at 5% 90%, #EFE6FC 0, rgba(239,230,252,0) 35%), #F6F3FB; padding: 24px; font-variant-numeric: tabular-nums">
+  <div style="max-width: 1392px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+
+    <aside aria-label="เมนูเถ้าแก่" style="flex: 0 1 240px; min-width: 0; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.95); backdrop-filter: blur(18px); border-radius: 28px; padding: 24px 16px; display: flex; flex-direction: column; gap: 28px; box-shadow: 0 16px 40px rgba(110, 90, 170, 0.10)">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px">
+        <span style="font-weight: 700; font-size: 22px; letter-spacing: -0.01em">DealGuard</span>
+      </div>
+      <nav style="display: flex; flex-direction: column; gap: 4px">
+        <a href="#" aria-current="page" style="height: 46px; padding: 0 14px; border-radius: 14px; background: #EFE9FD; color: #5B3FC4; text-decoration: none; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 12px">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="2"></rect><rect x="13" y="4" width="7" height="7" rx="2"></rect><rect x="4" y="13" width="7" height="7" rx="2"></rect><rect x="13" y="13" width="7" height="7" rx="2"></rect></svg>
+          ภาพรวม
+        </a>
+        <a href="#" style="height: 46px; padding: 0 14px; border-radius: 14px; color: #2B2D3E; text-decoration: none; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 12px">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F6178" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>
+          ดีลทั้งหมด
+        </a>
+        <a href="#" style="height: 46px; padding: 0 14px; border-radius: 14px; color: #2B2D3E; text-decoration: none; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 12px">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F6178" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          <span style="flex: 1 1 auto">รอตัดสิน</span>
+          <span style="min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: #C2570C; color: #FFFFFF; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">2</span>
+        </a>
+        <a href="Owner-Settings.dc.html" style="height: 46px; padding: 0 14px; border-radius: 14px; color: #2B2D3E; text-decoration: none; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 12px">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5F6178" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12l-8 8-8-8V4h8z"></path><circle cx="8.5" cy="8.5" r="1.5"></circle></svg>
+          สินค้าและราคา
+        </a>
+      </nav>
+      <div style="margin-top: auto; border-radius: 20px; background: rgba(239,233,253,0.7); padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-weight: 600; font-size: 14px">หน้าแชตของร้าน</span>
+        <span style="font-size: 13px; color: #5F6178; line-height: 1.5">ลองดูว่าลูกค้าเห็นอะไรตอนต่อราคา</span>
+        <a href="Main.dc.html" style="height: 40px; border-radius: 999px; background: linear-gradient(155deg, rgba(255,255,255,0.78) 0%, rgba(222,208,252,0.5) 50%, rgba(234,224,253,0.68) 100%); color: #4B2FB0; border: 1px solid rgba(255,255,255,0.9); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,1), inset 0 -1px 0 rgba(255,255,255,0.4), 0 0 0 1px rgba(122,90,224,0.16), 0 8px 22px rgba(110, 90, 170, 0.16); text-decoration: none; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center">เปิดหน้าลูกค้า</a>
+      </div>
+    </aside>
+
+    <main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 22px; padding: 6px 0">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column">
+          <h1 style="margin: 0; font-weight: 600; font-size: 28px; line-height: 1.35">ภาพรวมวันนี้</h1>
+          <span style="font-size: 14px; color: #5F6178">ร้านเฮียชัยโมบาย · [วันที่]</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <button type="button" aria-label="การแจ้งเตือน 2 เรื่อง" style="position: relative; width: 46px; height: 46px; border: 1px solid rgba(255,255,255,0.95); border-radius: 14px; background: rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: center">
+            <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"></path><path d="M10 20a2 2 0 0 0 4 0"></path></svg>
+            <span aria-hidden="true" style="position: absolute; top: 9px; right: 10px; width: 9px; height: 9px; border-radius: 50%; background: #C2570C; border: 2px solid #FFFFFF"></span>
+          </button>
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 50%; background: #EFE9FD; color: #5B3FC4; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px">ชัย</span>
+            <span style="display: flex; flex-direction: column">
+              <span style="font-weight: 600; font-size: 15px">เฮียชัย</span>
+              <span style="font-size: 12px; color: #5F6178">เจ้าของร้าน</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start">
+        <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 22px">
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 16px">
+            <div style="border-radius: 22px; background: linear-gradient(155deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.06) 48%, rgba(255,255,255,0.16) 100%); border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(255,255,255,0.25), inset 1px 0 0 rgba(255,255,255,0.35), 0 10px 30px rgba(110, 90, 170, 0.14); padding: 18px; display: flex; flex-direction: column; gap: 6px">
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 8px; background: #EFE9FD; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B3FC4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path></svg></span>กำไรที่รักษาไว้</span>
+              <span style="font-weight: 600; font-size: 30px; line-height: 1.3">฿48,332</span>
+              <span style="font-size: 12px; color: #34364C">เทียบกับถ้ายอมลดตามที่ขอ</span>
+            </div>
+            <div style="border-radius: 22px; background: linear-gradient(155deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.06) 48%, rgba(255,255,255,0.16) 100%); border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(255,255,255,0.25), inset 1px 0 0 rgba(255,255,255,0.35), 0 10px 30px rgba(110, 90, 170, 0.14); padding: 18px; display: flex; flex-direction: column; gap: 6px">
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 8px; background: #DDEBFB; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F5F99" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-9"></path></svg></span>ยอดขายที่ AI ปิดได้</span>
+              <span style="font-weight: 600; font-size: 30px; line-height: 1.3">฿475,000</span>
+              <span style="font-size: 12px; color: #34364C">จาก 3 ดีลวันนี้</span>
+            </div>
+            <div style="border-radius: 22px; background: linear-gradient(155deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.06) 48%, rgba(255,255,255,0.16) 100%); border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(255,255,255,0.25), inset 1px 0 0 rgba(255,255,255,0.35), 0 10px 30px rgba(110, 90, 170, 0.14); padding: 18px; display: flex; flex-direction: column; gap: 6px">
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 8px; background: #DAF2E6; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D6B4A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>ปิดดีลได้</span>
+              <span style="font-weight: 600; font-size: 30px; line-height: 1.3">3 ดีล</span>
+              <span style="font-size: 12px; color: #34364C">ทุกราคาไม่ต่ำกว่าราคาพื้น</span>
+            </div>
+          </div>
+
+          <section aria-labelledby="chart-h" style="border-radius: 24px; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.95); backdrop-filter: blur(18px); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 16px 40px rgba(110, 90, 170, 0.10)">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+              <div style="display: flex; flex-direction: column">
+                <h2 id="chart-h" style="margin: 0; font-weight: 600; font-size: 18px">กำไรต่อดีล: ยอมลด vs ข้อเสนอของ AI</h2>
+                <span style="font-size: 13px; color: #5F6178">กำไรเป็นบาท ต่อดีล</span>
+              </div>
+              <div style="display: flex; gap: 16px; font-size: 13px; color: #34364C">
+                <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #3E9BD6"></span>ถ้ายอมลดตามที่ขอ</span>
+                <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #7A5AE0"></span>ข้อเสนอที่ปิดได้</span>
+              </div>
+            </div>
+            <div role="img" aria-label="กำไรต่อดีล ถ้ายอมลดได้ 25,000 บาททุกดีล ข้อเสนอของ AI ได้ 45,000 36,332 และ 42,000 บาท" style="display: flex; gap: 10px">
+              <div aria-hidden="true" style="display: flex; flex-direction: column; justify-content: space-between; height: 220px; font-size: 11px; color: #5F6178; text-align: right; width: 34px; padding-bottom: 0">
+                <span>50k</span><span>40k</span><span>30k</span><span>20k</span><span>10k</span><span>0</span>
+              </div>
+              <div style="flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px">
+                <div style="position: relative; height: 220px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; border-bottom: 1px solid #D6D3E6">
+                  <div aria-hidden="true" style="position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none">
+                    <span style="border-top: 1px dashed #EFEAF8"></span><span style="border-top: 1px dashed #EFEAF8"></span><span style="border-top: 1px dashed #EFEAF8"></span><span style="border-top: 1px dashed #EFEAF8"></span><span style="border-top: 1px dashed #EFEAF8"></span><span></span>
+                  </div>
+                  <sc-for list="{{bars}}" as="g" hint-placeholder-count="3">
+                    <div style="position: relative; display: flex; justify-content: center; align-items: flex-end; gap: 2px; height: 100%">
+                      <span title="{{g.tipBase}}" style="width: 26px; border-radius: 4px 4px 0 0; background: #3E9BD6; height: {{g.hBase}}"></span>
+                      <span title="{{g.tipAi}}" style="position: relative; width: 26px; border-radius: 4px 4px 0 0; background: #7A5AE0; height: {{g.hAi}}">
+                        <span style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 4px; font-size: 12px; font-weight: 600; color: #2B2D3E; white-space: nowrap">{{g.labelAi}}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); font-size: 13px; color: #34364C; text-align: center">
+                  <sc-for list="{{bars}}" as="g" hint-placeholder-count="3">
+                    <span>{{g.name}}</span>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section aria-labelledby="deal-h" style="border-radius: 24px; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.95); backdrop-filter: blur(18px); padding: 18px 16px 8px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 16px 40px rgba(110, 90, 170, 0.10)">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 6px">
+              <h2 id="deal-h" style="margin: 0; font-weight: 600; font-size: 18px">ดีลที่ AI ปิดได้</h2>
+              <a href="#" style="font-size: 13px; font-weight: 600; color: #5B3FC4; text-decoration: none; padding: 10px 6px">ดูทั้งหมด</a>
+            </div>
+            <div style="overflow-x: auto">
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px">
+                <thead><tr><th>เวลา</th><th>ลูกค้า</th><th>ข้อเสนอ</th><th>ราคา × จำนวน</th><th>ยอดขาย</th><th style="text-align: right">กำไรที่รักษาไว้</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{deals}}" as="d" hint-placeholder-count="3">
+                    <tr>
+                      <td style="color: #5F6178">{{d.time}}</td>
+                      <td style="font-weight: 500">{{d.buyer}}</td>
+                      <td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 50%; background: #EFE9FD; color: #5B3FC4; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">{{d.id}}</span>{{d.label}}</span></td>
+                      <td>{{d.terms}}</td>
+                      <td>{{d.revenue}}</td>
+                      <td style="text-align: right; font-weight: 700; color: #5B3FC4">{{d.recovered}}</td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+          <div style="border-radius: 24px; background: linear-gradient(155deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.06) 48%, rgba(255,255,255,0.16) 100%); border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(255,255,255,0.25), inset 1px 0 0 rgba(255,255,255,0.35), 0 10px 30px rgba(110, 90, 170, 0.14); color: #8A3C0B; padding: 20px; display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 13px; color: #8A3C0B">รอเถ้าแก่ตัดสิน</span>
+            <span style="font-weight: 600; font-size: 28px; line-height: 1.3">2 เรื่อง</span>
+            <span style="font-size: 13px; color: #8A3C0B; line-height: 1.5">AI หยุดตอบและส่งต่อให้เฮีย เพราะเกินอำนาจที่ตั้งไว้</span>
+          </div>
+          <article style="border-radius: 22px; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.95); backdrop-filter: blur(18px); padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(110, 90, 170, 0.10)">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span style="padding: 4px 10px; border-radius: 999px; background: #FDF0E6; color: #8A3C0B; font-size: 12px; font-weight: 600">เกินเกณฑ์มูลค่า</span>
+              <span style="font-size: 12px; color: #5F6178">22:47</span>
+            </div>
+            <p style="margin: 0; font-size: 14px; line-height: 1.6">[ชื่อลูกค้า] ขอสายชาร์จ 50,000 ชิ้น ที่ ฿125 · มูลค่าราว ฿6.25 ล้าน เกินเกณฑ์ ฿300,000 · AI ยังไม่เสนอราคา</p>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+              <button type="button" style="height: 42px; border: 0; border-radius: 999px; background: linear-gradient(155deg, rgba(255,255,255,0.78) 0%, rgba(222,208,252,0.5) 50%, rgba(234,224,253,0.68) 100%); color: #4B2FB0; border: 1px solid rgba(255,255,255,0.9); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,1), inset 0 -1px 0 rgba(255,255,255,0.4), 0 0 0 1px rgba(122,90,224,0.16), 0 8px 22px rgba(110, 90, 170, 0.16); font-weight: 600; font-size: 14px">ตอบเอง</button>
+              <button type="button" style="height: 42px; border: 0; border-radius: 999px; background: linear-gradient(155deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.36) 100%); color: #5B3FC4; border: 1px solid rgba(255,255,255,0.85); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 0 0 1px rgba(122,90,224,0.10), 0 4px 12px rgba(110, 90, 170, 0.08); font-weight: 500; font-size: 14px">ดูแชต</button>
+            </div>
+          </article>
+          <article style="border-radius: 22px; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.95); backdrop-filter: blur(18px); padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(110, 90, 170, 0.10)">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span style="padding: 4px 10px; border-radius: 999px; background: #FDF0E6; color: #8A3C0B; font-size: 12px; font-weight: 600">ขอคืนเงิน</span>
+              <span style="font-size: 12px; color: #5F6178">07:15</span>
+            </div>
+            <p style="margin: 0; font-size: 14px; line-height: 1.6">[ชื่อลูกค้า] แจ้งของเสีย ขอคืนเงิน · ออเดอร์ [เลขออเดอร์] · AI ไม่รับปากเรื่องคืนเงิน</p>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+              <button type="button" style="height: 42px; border: 0; border-radius: 999px; background: linear-gradient(155deg, rgba(255,255,255,0.78) 0%, rgba(222,208,252,0.5) 50%, rgba(234,224,253,0.68) 100%); color: #4B2FB0; border: 1px solid rgba(255,255,255,0.9); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,1), inset 0 -1px 0 rgba(255,255,255,0.4), 0 0 0 1px rgba(122,90,224,0.16), 0 8px 22px rgba(110, 90, 170, 0.16); font-weight: 600; font-size: 14px">ตอบเอง</button>
+              <button type="button" style="height: 42px; border: 0; border-radius: 999px; background: linear-gradient(155deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.36) 100%); color: #5B3FC4; border: 1px solid rgba(255,255,255,0.85); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 0 0 1px rgba(122,90,224,0.10), 0 4px 12px rgba(110, 90, 170, 0.08); font-weight: 500; font-size: 14px">ดูแชต</button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const deals = [
+      { time: '21:32', buyer: 'คุณนก', id: 'A', label: 'ซื้อเยอะ', terms: '฿130 × 1,500', revenue: '฿195,000', recovered: '+฿20,000', base: 25000, ai: 45000 },
+      { time: '22:10', buyer: '[ลูกค้า 2]', id: 'B', label: 'จ่ายสด', terms: '฿135 × 1,000', revenue: '฿135,000', recovered: '+฿11,332', base: 25000, ai: 36332 },
+      { time: '06:58', buyer: '[ลูกค้า 3]', id: 'C', label: 'รับของแถม', terms: '฿145 × 1,000 + แถม 200', revenue: '฿145,000', recovered: '+฿17,000', base: 25000, ai: 42000 }
+    ];
+    const max = 50000;
+    const fmt = (n) => n.toLocaleString('en-US');
+    const bars = deals.map((d) => ({
+      name: d.id + ' · ' + d.buyer,
+      hBase: (d.base / max * 100) + '%',
+      hAi: (d.ai / max * 100) + '%',
+      labelAi: fmt(d.ai),
+      tipBase: d.buyer + ' · ถ้ายอมลด ฿' + fmt(d.base),
+      tipAi: d.buyer + ' · ข้อเสนอที่ปิดได้ ฿' + fmt(d.ai)
+    }));
+    return { deals, bars };
+  }
+}
+</script>
+</body>
+</html>
