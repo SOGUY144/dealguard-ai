@@ -35,6 +35,19 @@ describe("parseIntent (Layer 1)", () => {
     });
   });
 
+  // พบตอนทดสอบกับ GPT จริง 24 ต.ค. 2569: "ร้านข้างๆ ให้ 110" → GPT ใส่ requested_price = 110
+  it("GPT เอาราคาคู่แข่งมาใส่เป็นราคาที่ขอ (เท่ากันพอดี) → ถือว่าอ้างราคาร้านอื่น ไม่ใช่ขอราคานั้น", async () => {
+    const llm = fakeLlm(async () => llmOutput({ requested_price: 110, competitor_price: 110 }));
+    const { intent } = await parseIntent("ร้านข้างๆ ให้ 110", ctx, llm);
+    expect(intent).toMatchObject({ requestedPrice: null, competitorClaim: { mentioned: true, price: 110 } });
+  });
+
+  it("ลูกค้าขอเท่าราคาคู่แข่งจริงๆ (มีคำว่าขอ) → นับเป็นราคาที่ขอ (ตัวนับต่ำกว่าพื้นต้องทำงาน)", async () => {
+    const llm = fakeLlm(async () => llmOutput({ requested_price: 100, competitor_price: 100 }));
+    const { intent } = await parseIntent("ร้านอื่นให้ 100 ขอ 100 ได้ไหม", ctx, llm);
+    expect(intent.requestedPrice).toBe(100);
+  });
+
   it("prompt ไม่มีต้นทุนหรือราคาพื้น — ส่งแค่ sku กับชื่อสินค้า", async () => {
     const llm = fakeLlm(async () => llmOutput());
     await parseIntent("ขอ 125", { ...ctx, history: ["สวัสดีครับ"] }, llm);

@@ -46,6 +46,8 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     if (inFlight.current) return false;
     inFlight.current = true;
     setPending(true);
+    // chip ก่อนส่ง — ส่งไม่สำเร็จแล้วให้กลับมา
+    const chipsBefore = liveView?.suggestions ?? [];
     if (action.type === "send") {
       const at = new Date().toISOString();
       setLiveView((v) => v && withPendingBuyerText(v, action.text.trim(), action.inputMode, at));
@@ -62,7 +64,7 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
       }
       console.error("[chat]", err);
       const at = new Date().toISOString();
-      setLiveView((v) => v && withSendError(v, at));
+      setLiveView((v) => v && withSendError(v, at, chipsBefore));
       return false;
     } finally {
       inFlight.current = false;

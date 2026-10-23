@@ -5,6 +5,8 @@ import { parseIntent, type IntentLlm } from "@/lib/ai/intent";
 import type { ChatAction, ChatView } from "@/lib/chat/actions";
 import {
   addressName,
+  ambiguousOfferReply,
+  competitorReply,
   greetingText,
   humanRequestReply,
   pickedOfferText,
@@ -12,18 +14,26 @@ import {
   replyFor,
   type Reply,
 } from "@/lib/chat/replies";
-import { deriveSuggestions, lastOffers } from "@/lib/chat/suggestions";
+import { deriveSuggestions, isOfferCardExpired, lastOffers, OFFER_TTL_MS } from "@/lib/chat/suggestions";
 import type { ChatMessage, ChatMessageDraft, ChatMessageOf, Offer, PublicProduct, Storefront } from "@/lib/chat/types";
 import { runDealEngine } from "@/lib/deal-engine";
 import type { Intent, MerchantConfig, NegotiationState, PricedOffer } from "@/lib/deal-engine/types";
 import type { ChatStore, StoredChat } from "./store";
 
-export type PipelineDeps = { store: ChatStore; storefront: Storefront; intentLlm: IntentLlm | null };
+export type PipelineDeps = {
+  store: ChatStore;
+  storefront: Storefront;
+  intentLlm: IntentLlm | null;
+  /** เวลาปัจจุบัน (test ใส่เองได้) */
+  now?: () => Date;
+};
 export type Buyer = { id: string; displayName: string };
 
 /** ข้อความก่อนหน้าที่ส่งให้ GPT เข้าใจบริบท */
 const HISTORY_LIMIT = 6;
 const MAX_COUNTER_RETRIES = 3;
+/** ออเดอร์ของการ์ดนี้มีอยู่แล้ว + เก่ากว่านี้ = ครั้งก่อนบันทึกไม่ครบ (ไม่ใช่กดซ้อนพร้อมกัน) → ทำให้ครบ */
+const RECOVER_ORDER_AFTER_MS = 10_000;
 const ASKS_COST = /ต้นทุน|ราคาทุน|ราคาพื้น|กำไร|มาร์จิ้น|margin|cost|floor/i;
 
 export async function loadChat(deps: PipelineDeps, buyer: Buyer): Promise<ChatView> {
@@ -80,8 +90,23 @@ function view(
   chat: StoredChat,
   messages: ChatMessage[],
   extra: Pick<ChatView, "focus" | "notice"> = {},
+  now = new Date(),
 ): ChatView {
-  return { messages, mode: chat.mode, suggestions: deriveSuggestions(messages, chat.mode), ...extra };
+  return { messages, mode: chat.mode, suggestions: deriveSuggestions(messages, chat.mode, now), ...extra };
+}
+
+const clock = (deps: PipelineDeps) => (deps.now ?? (() => new Date()))();
+
+/**
+ * การ์ดข้อเสนอล่าสุดที่ยังใช้ได้จริง: ยังไม่ยืนยัน ไม่เก่าเกิน 24 ชม. สินค้ายังเปิดให้ AI ขาย และไม่ต่ำกว่าราคาพื้นปัจจุบัน
+ * ใช้ไม่ได้ = ไม่ชี้ไปการ์ดนั้น ไม่ชวนเลือก (ไม่งั้นลูกค้าวนกดยืนยันไม่ได้)
+ */
+function usableOffers(messages: ChatMessage[], config: MerchantConfig, now: Date): ChatMessageOf<"offers"> | undefined {
+  const card = lastOffers(messages);
+  if (!card || card.confirmed || isOfferCardExpired(card, now)) return undefined;
+  const product = config.products.find((p) => p.sku === card.sku);
+  if (!product || card.offers.some((o) => o.pricePerUnit < product.floorPrice)) return undefined;
+  return card;
 }
 
 /** สินค้าที่ลูกค้าเห็นได้ (ไม่มีต้นทุน/ราคาพื้น/tier) — ที่เดียวที่แปลง Product → PublicProduct */
@@ -140,15 +165,38 @@ async function send(
   const products = toPublicProducts(config);
   const { intent } = await parseIntent(text, { products, lastSku: lastSku(messages), history }, deps.intentLlm);
 
-  const openOffers = lastOffers(messages);
-  const open = openOffers && !openOffers.confirmed ? openOffers : undefined;
+  const now = clock(deps);
+  const open = usableOffers(messages, config, now);
+
+  // อ้างราคาร้านอื่นอย่างเดียว ทั้งที่มีข้อเสนออยู่แล้ว → ไม่ลดตาม ชวนดูข้อเสนอเดิม (ไม่นับเป็นการต่อรองรอบใหม่)
+  const competitorPrice = intent.competitorClaim?.price ?? null;
+  // GPT อาจดึงจำนวนเดิมจากข้อความก่อนหน้ามาใส่ — จำนวนเท่ากับที่เสนอไปแล้วก็ไม่ใช่ข้อมูลใหม่
+  const sameQty = intent.quantity === null || open?.offers.some((o) => o.qty === intent.quantity);
+  // เฉพาะตอนต่อราคา/สั่งของสินค้าเดียวกัน — ขอคืนเงิน/ร้องเรียนที่บังเอิญอ้างราคาร้านอื่นต้องไปถึงเถ้าแก่
+  const negotiating = intent.intent === "negotiate_price" || intent.intent === "order";
+  const sameProduct = intent.sku === null || intent.sku === open?.sku;
+  if (
+    open &&
+    negotiating &&
+    sameProduct &&
+    competitorPrice !== null &&
+    intent.requestedPrice === null &&
+    sameQty &&
+    !intent.injectionSuspected
+  ) {
+    return commit(deps, chat, messages, withBuyerText(competitorReply(open, competitorPrice, storefront.ownerName)));
+  }
 
   // "สั่ง 1,500 ชิ้น" / "จ่ายสด" ตรงกับข้อเสนอที่เพิ่งให้ไป → ชี้ไปข้อนั้น ไม่ต่อราคารอบใหม่
-  const matched = open && !intent.injectionSuspected ? matchOpenOffer(intent, open) : undefined;
-  if (open && matched) {
+  const candidates = open && !intent.injectionSuspected ? matchOpenOffer(intent, open) : [];
+  if (open && candidates.length === 1) {
+    const [matched] = candidates;
     const reply: Reply = { messages: [{ type: "ai_text", text: pickedOfferText(matched) }] };
     return commit(deps, chat, messages, withBuyerText(reply), undefined, { messageId: open.id, offerId: matched.id });
   }
+  // ตรงหลายข้อ (เช่น B กับ C เป็น 1,000 ชิ้นทั้งคู่) → ถามว่าข้อไหน
+  if (open && candidates.length > 1) return commit(deps, chat, messages, withBuyerText(ambiguousOfferReply(candidates)));
+
 
   const buyerName = addressName(buyer.displayName);
   // ตัวนับต่ำกว่าพื้น/หลอกระบบ: บันทึกแบบ compare-and-set ถ้าอีกแท็บเปลี่ยนไปก่อน อ่านใหม่แล้วคิดใหม่
@@ -171,10 +219,17 @@ async function send(
     qty: intent.quantity,
     openOffers: open,
     asksCost: ASKS_COST.test(text),
+    competitorPrice,
   });
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
 
-  return commit(deps, { ...current, negotiation: result.state }, messages, withBuyerText(reply), priced);
+  try {
+    return await commit(deps, { ...current, negotiation: result.state }, messages, withBuyerText(reply), priced);
+  } catch (err) {
+    // บันทึกคำตอบไม่สำเร็จ ลูกค้าจะส่งใหม่ — คืนตัวนับ ไม่งั้นรอบส่งใหม่ถูกนับซ้ำ (escalate เร็วเกินจริง)
+    await Promise.resolve(saveCounters(store, { ...current, negotiation: result.state }, current.negotiation)).catch(() => false);
+    throw err;
+  }
 }
 
 /** ตัวนับไม่เปลี่ยนก็ไม่ต้องเขียน */
@@ -184,45 +239,49 @@ function saveCounters(store: ChatStore, chat: StoredChat, next: NegotiationState
   return store.setNegotiation(chat.id, prev, next);
 }
 
-/** ข้อเสนอที่ลูกค้าเลือกด้วยการพิมพ์ — ต้องไม่ต่อราคาและตรงกับข้อเดียวเท่านั้น */
-function matchOpenOffer(intent: Intent, open: ChatMessageOf<"offers">): Offer | undefined {
-  if (intent.requestedPrice !== null) return undefined;
-  if (intent.intent !== "order" && intent.intent !== "negotiate_price") return undefined;
-  if (intent.sku !== null && intent.sku !== open.sku) return undefined;
+/** ข้อเสนอเดิมที่ลูกค้าพิมพ์เลือก (ต้องไม่ต่อราคา) — 1 ข้อ = เลือกให้ · หลายข้อ = ถาม · ว่าง = ไม่ใช่การเลือก */
+function matchOpenOffer(intent: Intent, open: ChatMessageOf<"offers">): Offer[] {
+  if (intent.requestedPrice !== null) return [];
+  if (intent.intent !== "order" && intent.intent !== "negotiate_price") return [];
+  if (intent.sku !== null && intent.sku !== open.sku) return [];
 
-  const candidates =
-    intent.paymentTermsRequestedDays === 0
-      ? open.offers.filter((o) => o.lever === "cash" && (intent.quantity === null || intent.quantity === o.qty))
-      : intent.quantity !== null
-        ? open.offers.filter((o) => o.qty === intent.quantity)
-        : [];
-  return candidates.length === 1 ? candidates[0] : undefined;
+  if (intent.paymentTermsRequestedDays === 0) {
+    return open.offers.filter((o) => o.lever === "cash" && (intent.quantity === null || intent.quantity === o.qty));
+  }
+  return intent.quantity !== null ? open.offers.filter((o) => o.qty === intent.quantity) : [];
 }
 
 /** บันทึกคำตอบ: ข้อความ, ข้อเสนอ+margin, เรื่องที่ส่งต่อ แล้วคืนหน้าจอใหม่ */
 async function commit(
-  { store }: PipelineDeps,
+  deps: PipelineDeps,
   chat: StoredChat,
   messages: ChatMessage[],
   reply: Reply,
   priced?: PricedOffer[],
   focus?: ChatView["focus"],
 ): Promise<ChatView> {
+  const { store } = deps;
   const added = await store.appendMessages(chat.id, reply.messages);
   const offersMessage = added.find((m) => m.type === "offers");
   const { handoff } = reply;
   // เขียนที่ไม่ขึ้นต่อกัน ยิงพร้อมกัน
-  await Promise.all([
-    offersMessage && priced ? store.saveOffers(chat.id, offersMessage.id, offersMessage.sku, priced) : null,
-    handoff ? store.createEscalation(chat.id, handoff.kind, handoff.brief) : null,
-    handoff ? store.setMode(chat.id, "human") : null,
-  ]);
+  try {
+    await Promise.all([
+      offersMessage && priced ? store.saveOffers(chat.id, offersMessage.id, offersMessage.sku, priced) : null,
+      handoff ? store.escalate(chat.id, handoff.kind, handoff.brief) : null,
+    ]);
+  } catch (err) {
+    // ถอนข้อความที่เพิ่งบันทึก — ไม่ทิ้งการ์ดข้อเสนอที่ยืนยันไม่ได้ / การ์ดส่งต่อที่ AI ยังตอบอยู่
+    // และลูกค้าที่กดส่งใหม่จะไม่เห็นข้อความตัวเองซ้ำ
+    await store.deleteMessages(chat.id, added.map((m) => m.id)).catch(() => {});
+    throw err;
+  }
   const next: StoredChat = handoff ? { ...chat, mode: "human" } : chat;
-  return view(next, [...messages, ...added], focus && { focus });
+  return view(next, [...messages, ...added], focus && { focus }, clock(deps));
 }
 
 async function confirmOffer(
-  { store }: PipelineDeps,
+  { store, now = () => new Date() }: PipelineDeps,
   config: MerchantConfig,
   buyer: Buyer,
   chat: StoredChat,
@@ -239,16 +298,35 @@ async function confirmOffer(
   const stored = await store.findOffer(chat.id, messageId, offerId);
   if (!stored) return rejected();
   const product = config.products.find((p) => p.sku === stored.sku);
-  const productName = product?.name ?? stored.sku;
+  // ข้อเสนอเก่า หรือราคา/สินค้าเปลี่ยนไปแล้ว (เถ้าแก่ขึ้นราคาพื้น / ปิด AI สินค้านี้) → ยืนยันไม่ได้ ให้ขอข้อเสนอใหม่
+  const expired = now().getTime() - Date.parse(stored.createdAt) > OFFER_TTL_MS;
+  if (!product || expired || stored.offer.pricePerUnit < product.floorPrice) return rejected();
+  const productName = product.name;
 
-  const order = await store.createOrder({ chatId: chat.id, buyerId: buyer.id, offerRowId: stored.rowId, productName });
-  if (!order) return rejected();
+  let order = await store.createOrder({
+    chatId: chat.id,
+    buyerId: buyer.id,
+    offerRowId: stored.rowId,
+    offerMessageId: messageId,
+    productName,
+    gift: stored.offer.bundle,
+  });
+  let confirmedOffer = stored.offer;
+  if (!order) {
+    // การ์ดนี้เป็นออเดอร์ไปแล้ว: ถ้าเป็นครั้งก่อนที่บันทึกใบสรุปไม่ครบ → แสดงใบสรุปของออเดอร์เดิมให้ครบ
+    const existing = await store.findOrderForCard(chat.id, messageId);
+    if (!existing || now().getTime() - Date.parse(existing.createdAt) < RECOVER_ORDER_AFTER_MS) return rejected();
+    const original = await store.findOffer(chat.id, messageId, existing.letter);
+    if (!original) return rejected();
+    order = { orderId: existing.orderId };
+    confirmedOffer = original.offer;
+  }
 
-  const confirmed: ChatMessage = { ...target, selectedId: offerId, confirmed: true };
+  const confirmed: ChatMessage = { ...target, selectedId: confirmedOffer.id, confirmed: true };
   await store.updateMessage(chat.id, confirmed);
   const added = await store.appendMessages(chat.id, [
-    { type: "buyer_text", text: `เลือกข้อ ${stored.offer.id} · ${stored.offer.label}`, inputMode: "text" },
-    { type: "order_summary", orderId: order.orderId, offer: stored.offer, productName },
+    { type: "buyer_text", text: `เลือกข้อ ${confirmedOffer.id} · ${confirmedOffer.label}`, inputMode: "text" },
+    { type: "order_summary", orderId: order.orderId, offer: confirmedOffer, productName },
   ]);
   return view(chat, [...messages.map((m) => (m.id === confirmed.id ? confirmed : m)), ...added]);
 }

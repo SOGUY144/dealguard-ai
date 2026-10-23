@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBaht, formatClock, formatCredit, formatDuration, formatQty } from "../format";
+import { formatBaht, formatClock, formatCredit, formatDayLabel, formatDuration, formatQty } from "../format";
 
 describe("format", () => {
   it("จำนวนมีคอมมา", () => {
@@ -26,3 +26,14 @@ describe("format", () => {
     expect(formatDuration(75.4)).toBe("1:15");
   });
 });
+
+describe("formatDayLabel (หัวแชต — แชตเดียวใช้ยาวหลายวัน)", () => {
+  const now = new Date("2026-10-24T10:00:00Z"); // 17:00 เวลาไทย 24 ต.ค.
+  it("วันเดียวกันตามเวลาไทย → วันนี้", () => {
+    expect(formatDayLabel("2026-10-23T18:00:00Z", now)).toBe("วันนี้"); // 01:00 ไทย 24 ต.ค.
+  });
+  it("วันก่อน → วันที่จริง", () => {
+    expect(formatDayLabel("2026-10-23T16:00:00Z", now)).toBe("23 ต.ค. 2569"); // 23:00 ไทย 23 ต.ค.
+  });
+});
+

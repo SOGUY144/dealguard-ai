@@ -15,6 +15,8 @@ export type BuiltOffers = {
   offers: PricedOffer[];
   /** จำนวนข้อเสนอที่ถูกตัดเพราะยอดรวมเกินอำนาจ AI */
   droppedOverLimit: number;
+  /** ยอดรวมของข้อที่ถูกที่สุดที่ถูกตัด (ใช้เขียน Deal Brief) */
+  minDroppedTotal: number | null;
 };
 
 type Draft = Omit<Offer, "id">;
@@ -42,7 +44,8 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
     Math.round(product.listPrice * (1 - product.cashDiscountPct)),
     askedPrice,
   );
-  if (cashPrice < product.listPrice) {
+  // สินค้าที่ปกติโอนทันทีอยู่แล้ว ลูกค้าไม่ได้เสียเครดิตแลก → ลดให้ = ลดฟรี
+  if (cashPrice < product.listPrice && product.defaultCreditDays > 0) {
     drafts.push({
       draft: {
         lever: "cash",
@@ -61,11 +64,18 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
 
   const maxTotal = request.maxTotal ?? Infinity;
   const allowed = drafts.filter(({ draft }) => draft.total <= maxTotal);
+  const dropped = drafts.filter(({ draft }) => draft.total > maxTotal).map(({ draft }) => draft.total);
   return {
-    droppedOverLimit: drafts.length - allowed.length,
+    droppedOverLimit: dropped.length,
+    minDroppedTotal: dropped.length ? Math.min(...dropped) : null,
     offers: allowed.map(({ draft, gift }, i) => {
       const offer: Offer = { id: IDS[i], ...draft };
-      return { offer, economics: computeEconomics(product, config, basis, offer, gift) };
+      const economics = computeEconomics(product, config, basis, offer, gift);
+      // ทีมตัดสิน 24 ต.ค. 2569: ไม่ได้ขอราคา = ไม่มีอะไรที่ "ยอมลด" ไป → กำไรที่รักษาไว้เป็น 0 (ไม่ติดลบ)
+      if (request.requestedPrice === null) {
+        return { offer, economics: { ...economics, marginIfConceded: economics.marginOffer, recoveredMargin: 0 } };
+      }
+      return { offer, economics };
     }),
   };
 }
@@ -111,7 +121,8 @@ function bundleOffer(
     stock.qtyAvailable,
     Math.floor((request.qty * (price - cashPrice)) / stock.perceivedValue),
   );
-  if (giftQty <= 0) return null;
+  // ราคาเท่าราคาขาย + ของแถม = ให้ของฟรีโดยลูกค้าไม่ได้แลกอะไร
+  if (giftQty <= 0 || price >= product.listPrice) return null;
 
   // ต้นทุนของแถมต้องน้อยกว่าเงินที่ไม่ได้ลดให้ (SKILL §6.4)
   const giftCost = stock.unitCost * giftQty;
@@ -126,7 +137,7 @@ function bundleOffer(
       conditionText: `${formatQty(request.qty)} ชิ้น + ${stock.name} ${formatQty(giftQty)} ชิ้น`,
       total: price * request.qty,
       creditDays: product.defaultCreditDays,
-      bundle: { name: stock.name, qty: giftQty },
+      bundle: { sku: stock.sku, name: stock.name, qty: giftQty },
     },
     gift: { unitCost: stock.unitCost, qty: giftQty },
   };

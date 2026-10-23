@@ -11,16 +11,27 @@ export class MemoryChatStore implements ChatStore {
   readonly chats: StoredChat[] = [];
   readonly messages = new Map<string, ChatMessage[]>();
   readonly offers: OfferRow[] = [];
-  readonly orders: { id: string; chatId: string; buyerId: string; offerRowId: string; productName: string }[] = [];
+  readonly orders: {
+    id: string;
+    chatId: string;
+    buyerId: string;
+    offerRowId: string;
+    offerMessageId: string;
+    productName: string;
+    createdAt: string;
+  }[] = [];
+  /** สต๊อกของแถมคงเหลือตาม sku (เริ่มจาก config) */
+  readonly giftStock = new Map<string, number>();
   readonly escalations: { chatId: string; kind: HandoffKind; brief: Brief }[] = [];
   private seq = 0;
   private clock: number;
 
   constructor(
     private readonly config: MerchantConfig,
-    startAt = Date.parse("2026-10-23T07:30:00Z"),
+    startAt = Date.now(),
   ) {
     this.clock = startAt;
+    for (const d of config.deadStock) this.giftStock.set(d.sku, d.qtyAvailable);
   }
 
   private nextId(prefix: string) {
@@ -71,6 +82,23 @@ export class MemoryChatStore implements ChatStore {
     if (i >= 0) list[i] = structuredClone(message);
   }
 
+  async deleteMessages(chatId: string, ids: string[]) {
+    const list = this.messages.get(chatId);
+    if (!list) return;
+    this.messages.set(
+      chatId,
+      list.filter((m) => !ids.includes(m.id)),
+    );
+    // การ์ดข้อเสนอถูกถอน → ข้อเสนอของการ์ดนั้นหายไปด้วย (เหมือน on delete cascade)
+    for (let i = this.offers.length - 1; i >= 0; i--) if (ids.includes(this.offers[i].messageId)) this.offers.splice(i, 1);
+  }
+
+  async findOrderForCard(chatId: string, offerMessageId: string) {
+    const order = this.orders.find((o) => o.chatId === chatId && o.offerMessageId === offerMessageId);
+    const offer = order && this.offers.find((o) => o.rowId === order.offerRowId);
+    return order && offer ? { orderId: order.id, letter: offer.offer.id, createdAt: order.createdAt } : null;
+  }
+
   async setMode(chatId: string, mode: StoredChat["mode"]) {
     const chat = this.chats.find((c) => c.id === chatId);
     if (chat) chat.mode = mode;
@@ -88,23 +116,40 @@ export class MemoryChatStore implements ChatStore {
 
   async saveOffers(chatId: string, messageId: string, sku: string, priced: PricedOffer[]) {
     for (const { offer, economics } of priced) {
-      this.offers.push({ rowId: this.nextId("offer"), chatId, messageId, sku, offer: structuredClone(offer), economics });
+      this.offers.push({
+        rowId: this.nextId("offer"),
+        chatId,
+        messageId,
+        sku,
+        offer: structuredClone(offer),
+        economics,
+        createdAt: new Date().toISOString(),
+      });
     }
   }
 
   async findOffer(chatId: string, messageId: string, letter: Offer["id"]) {
     const row = this.offers.find((o) => o.chatId === chatId && o.messageId === messageId && o.offer.id === letter);
-    return row ? { rowId: row.rowId, sku: row.sku, offer: structuredClone(row.offer) } : null;
+    return row ? { rowId: row.rowId, sku: row.sku, offer: structuredClone(row.offer), createdAt: row.createdAt } : null;
   }
 
-  async createOrder(input: { chatId: string; buyerId: string; offerRowId: string; productName: string }) {
-    if (this.orders.some((o) => o.offerRowId === input.offerRowId)) return null;
+  async createOrder(input: Parameters<ChatStore["createOrder"]>[0]) {
+    const { gift, ...order } = input;
+    const taken = this.orders.some((o) => o.offerRowId === order.offerRowId || o.offerMessageId === order.offerMessageId);
+    if (taken) return null;
+    if (gift) {
+      const sku = gift.sku ?? this.config.deadStock.find((d) => d.name === gift.name)?.sku ?? gift.name;
+      const left = this.giftStock.get(sku) ?? 0;
+      if (left < gift.qty) return null;
+      this.giftStock.set(sku, left - gift.qty);
+    }
     const id = this.nextId("order");
-    this.orders.push({ id, ...input });
+    this.orders.push({ id, ...order, createdAt: new Date().toISOString() });
     return { orderId: id };
   }
 
-  async createEscalation(chatId: string, kind: HandoffKind, brief: Brief) {
+  async escalate(chatId: string, kind: HandoffKind, brief: Brief) {
     this.escalations.push({ chatId, kind, brief: [...brief] });
+    await this.setMode(chatId, "human");
   }
 }

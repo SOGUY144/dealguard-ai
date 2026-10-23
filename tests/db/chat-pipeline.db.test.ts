@@ -113,7 +113,7 @@ describe("pipeline + Supabase", () => {
     const zero = { belowFloorCount: 0, injectionCount: 0 };
     expect(await store.setNegotiation(chat.id, zero, { belowFloorCount: 1, injectionCount: 0 })).toBe(true);
     expect(await store.setNegotiation(chat.id, zero, { belowFloorCount: 5, injectionCount: 0 })).toBe(false);
-    const row = await admin.from("chats").select("below_floor_count").eq("id", chat.id).single();
+    const row = await admin.from("chat_negotiation").select("below_floor_count").eq("chat_id", chat.id).single();
     expect(row.data!.below_floor_count).toBe(1);
   });
 
@@ -124,6 +124,20 @@ describe("pipeline + Supabase", () => {
     expect(economics.data).toEqual([]);
     const stranger = await other.client.from("messages").select("id").eq("id", offersMsg.id);
     expect(stranger.data).toEqual([]);
+  });
+
+  it("ลูกค้าอ่านตัวนับการต่อราคาไม่ได้ (เดาราคาพื้นไม่ได้) · ตาราง chats ไม่มีคอลัมน์ตัวนับแล้ว", async () => {
+    const counters = await nok.client.from("chat_negotiation").select("*");
+    expect(counters.data).toEqual([]);
+    const legacy = await nok.client.from("chats").select("below_floor_count");
+    expect(legacy.error).not.toBeNull();
+    const own = await nok.client.from("chats").select("id, mode");
+    expect(own.data).toHaveLength(1);
+  });
+
+  it("RPC ของ server เรียกจาก browser ไม่ได้", async () => {
+    const { error } = await nok.client.rpc("escalate_chat", { p_chat: offersMsg.id, p_kind: "refund", p_brief: ["a", "b", "c"] });
+    expect(error).not.toBeNull();
   });
 
   it("คนอื่นยืนยันข้อเสนอของแชตนี้ไม่ได้", async () => {
@@ -147,6 +161,31 @@ describe("pipeline + Supabase", () => {
 
     const reloaded = await loadChat(deps(), nok);
     expect(last(reloaded, "offers")).toMatchObject({ confirmed: true, selectedId: "B" });
+
+    // ใช้กู้ใบสรุปเมื่อครั้งก่อนบันทึกไม่ครบ
+    const chat = (await new SupabaseChatStore(admin).findChat(nok.id))!;
+    const found = await new SupabaseChatStore(admin).findOrderForCard(chat.id, offersMsg.id);
+    expect(found).toMatchObject({ orderId: summary.orderId, letter: "B" });
+  });
+
+  it("ยืนยันพร้อมกันหลายข้อจากการ์ดเดียว → ออเดอร์เดียว · ข้อ C หักสต๊อกของแถม", async () => {
+    const racer = await makeBuyer("สองแท็บพร้อมกัน");
+    await handleAction(deps(), racer, { type: "pick_product", sku: "CBL-C-1M" });
+    const card = last(
+      await handleAction(deps(), racer, { type: "send", text: "ขอ 125 ได้ไหม 1000 ชิ้น", inputMode: "text" }),
+      "offers",
+    )!;
+    const before = await admin.from("dead_stock").select("qty_available").eq("name", "หัวชาร์จ 20W").single();
+    await Promise.all(
+      (["A", "B", "C"] as const).map((offerId) => handleAction(deps(), racer, { type: "confirm_offer", messageId: card.id, offerId })),
+    );
+    const orders = await admin.from("orders").select("id, offers(letter)").eq("buyer_id", racer.id);
+    expect(orders.data).toHaveLength(1);
+    const letter = (orders.data![0].offers as unknown as { letter: string }).letter;
+    const after = await admin.from("dead_stock").select("qty_available").eq("name", "หัวชาร์จ 20W").single();
+    expect(after.data!.qty_available).toBe(before.data!.qty_available - (letter === "C" ? 200 : 0));
+    // คืนสต๊อกให้ข้อมูลเดโมเหมือนเดิม
+    await admin.from("dead_stock").update({ qty_available: before.data!.qty_available }).eq("name", "หัวชาร์จ 20W");
   });
 
   it("หน้าออเดอร์: ลูกค้าอ่านออเดอร์ของตัวเองผ่าน RLS ได้ · คนอื่นอ่านไม่ได้ · id แปลกๆ ได้ null", async () => {
@@ -171,4 +210,37 @@ describe("pipeline + Supabase", () => {
     const asBuyer = await nok.client.from("escalations").select("*");
     expect(asBuyer.data).toEqual([]);
   });
+
+  it("เถ้าแก่ปิด AI สินค้านี้ (ai_enabled = false) → ไม่อยู่ในรายการ และ Deal Engine ไม่ต่อราคา", async () => {
+    await admin.from("products").update({ ai_enabled: false }).eq("sku", "CBL-C-1M");
+    try {
+      const config = await new SupabaseChatStore(admin).loadConfig();
+      expect(config.products.map((p) => p.sku)).not.toContain("CBL-C-1M");
+    } finally {
+      await admin.from("products").update({ ai_enabled: true }).eq("sku", "CBL-C-1M");
+    }
+  });
+
+  it("เถ้าแก่เปลี่ยนชื่อของแถมหลังเสนอแล้ว → ยังสั่งข้อ C ได้ และหักสต๊อกถูกแถว (ใช้ sku)", async () => {
+    const renamer = await makeBuyer("เปลี่ยนชื่อของแถม");
+    await handleAction(deps(), renamer, { type: "pick_product", sku: "CBL-C-1M" });
+    const card = last(
+      await handleAction(deps(), renamer, { type: "send", text: "ขอ 125 ได้ไหม 1000 ชิ้น", inputMode: "text" }),
+      "offers",
+    )!;
+    const before = await admin.from("dead_stock").select("name, qty_available").eq("sku", "ADP-20W").single();
+    await admin.from("dead_stock").update({ name: "หัวชาร์จ 20W (ชื่อใหม่)" }).eq("sku", "ADP-20W");
+    try {
+      const view = await handleAction(deps(), renamer, { type: "confirm_offer", messageId: card.id, offerId: "C" });
+      expect(view.notice).toBeUndefined();
+      const after = await admin.from("dead_stock").select("qty_available").eq("sku", "ADP-20W").single();
+      expect(after.data!.qty_available).toBe(before.data!.qty_available - 200);
+    } finally {
+      await admin
+        .from("dead_stock")
+        .update({ name: before.data!.name, qty_available: before.data!.qty_available })
+        .eq("sku", "ADP-20W");
+    }
+  });
 });
+

@@ -45,10 +45,14 @@ export function withPendingBuyerText(view: ChatView, text: string, inputMode: "t
   };
 }
 
-/** ส่งไม่สำเร็จ: เอาข้อความที่ยังไม่ถึง server ออก แล้วบอกให้ลองใหม่ (ข้อความนี้อยู่ในเครื่อง ไม่ถูกเก็บ) */
-export function withSendError(view: ChatView, at: string): ChatView {
+/**
+ * ส่งไม่สำเร็จ: เอาข้อความที่ยังไม่ถึง server ออก แล้วบอกให้ลองใหม่ (ข้อความนี้อยู่ในเครื่อง ไม่ถูกเก็บ)
+ * restore = chip ก่อนส่ง (ตอนรอคำตอบซ่อนไว้) ให้กลับมา
+ */
+export function withSendError(view: ChatView, at: string, restore: ChatView["suggestions"] = view.suggestions): ChatView {
   return {
     ...view,
+    suggestions: restore,
     messages: [
       ...view.messages.filter((m) => !m.id.startsWith(PENDING_PREFIX)),
       { id: `local-error-${at}`, at, type: "ai_text", text: "ขอโทษครับ ส่งไม่สำเร็จ ลองส่งใหม่อีกครั้งนะครับ" },

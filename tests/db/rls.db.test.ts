@@ -225,3 +225,38 @@ describe("ยังไม่ล็อกอิน (anon)", () => {
     }
   });
 });
+
+describe("rate limit (hit_rate_limit)", () => {
+  it("ครบจำนวนในช่วงเวลา → ไม่ให้ผ่าน · คนอื่น (key อื่น) ไม่โดนด้วย", async () => {
+    const key = `test:${randomBytes(4).toString("hex")}`;
+    const hit = async (k: string) => (await admin.rpc("hit_rate_limit", { p_key: k, p_window_seconds: 60, p_max: 2 })).data;
+    expect(await hit(key)).toBe(true);
+    expect(await hit(key)).toBe(true);
+    expect(await hit(key)).toBe(false);
+    expect(await hit(`${key}:other`)).toBe(true);
+  });
+
+  it("browser เรียกนับเองไม่ได้", async () => {
+    const { error } = await buyerA.client.rpc("hit_rate_limit", { p_key: "x", p_window_seconds: 60, p_max: 1 });
+    expect(error).not.toBeNull();
+  });
+});
+
+describe("rate limit แบบดูอย่างเดียว + นับเฉพาะตอนพลาด (ล็อกอินผิด)", () => {
+  it("check ไม่นับ · record นับ · ครบแล้ว check บอกว่าเกิน", async () => {
+    const key = `test:fail:${randomBytes(4).toString("hex")}`;
+    const check = async () => (await admin.rpc("check_rate_limit", { p_key: key, p_window_seconds: 60, p_max: 2 })).data;
+    expect(await check()).toBe(true);
+    expect(await check()).toBe(true);
+    await admin.rpc("record_rate_hit", { p_key: key });
+    expect(await check()).toBe(true);
+    await admin.rpc("record_rate_hit", { p_key: key });
+    expect(await check()).toBe(false);
+  });
+
+  it("browser เรียก check/record เองไม่ได้", async () => {
+    expect((await buyerA.client.rpc("record_rate_hit", { p_key: "x" })).error).not.toBeNull();
+    expect((await buyerA.client.rpc("check_rate_limit", { p_key: "x", p_window_seconds: 1, p_max: 1 })).error).not.toBeNull();
+  });
+});
+

@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { warmUpIntentLlm } from "@/lib/ai/openai";
 import { getCurrentUser } from "@/lib/auth/dal";
+import { allow, LIMITS } from "@/lib/auth/rate-limit";
 import { isSameOrigin } from "@/lib/auth/routes";
 import { createChatDeps } from "@/lib/chat-server/deps";
 import { handleAction, loadChat } from "@/lib/chat-server/pipeline";
@@ -29,15 +30,20 @@ const actionSchema = z.discriminatedUnion("type", [
 const NO_STORE = { "cache-control": "no-store" };
 const fail = (status: number, error: string) => NextResponse.json({ error }, { status, headers: NO_STORE });
 
-async function buyer() {
+type Me = { id: string; displayName: string } | "not_buyer" | null;
+
+/** แชตต่อราคาเป็นของบัญชีลูกค้าเท่านั้น — เถ้าแก่สั่งเองจะกลายเป็น "ดีลของ AI" บนหน้าเถ้าแก่ */
+async function buyer(): Promise<Me> {
   const user = await getCurrentUser();
-  return user ? { id: user.id, displayName: user.displayName } : null;
+  if (!user) return null;
+  return user.role === "buyer" ? { id: user.id, displayName: user.displayName } : "not_buyer";
 }
 
 export async function GET() {
   try {
     const me = await buyer();
     if (!me) return fail(401, "unauthorized");
+    if (me === "not_buyer") return fail(403, "buyers_only");
     // ปลุก GPT ไว้ก่อนลูกค้าพิมพ์ข้อความแรก (request แรกหลังว่างนาน ช้า 7–13 วินาที)
     warmUpIntentLlm();
     return NextResponse.json(await loadChat(createChatDeps(), me), { headers: NO_STORE });
@@ -55,6 +61,9 @@ export async function POST(request: NextRequest) {
   try {
     const me = await buyer();
     if (!me) return fail(401, "unauthorized");
+    if (me === "not_buyer") return fail(403, "buyers_only");
+    // กันยิงรัวๆ (เปลือง GPT / ไล่หาเกณฑ์ของร้าน) — ลูกค้าจริงพิมพ์ไม่ถึง 30 ครั้งต่อนาที
+    if (!(await allow(`chat:user:${me.id}`, LIMITS.chatPerUser))) return fail(429, "too_many_requests");
     return NextResponse.json(await handleAction(createChatDeps(), me, parsed.data), { headers: NO_STORE });
   } catch (err) {
     console.error("[api/chat]", err);

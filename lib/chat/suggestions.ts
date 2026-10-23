@@ -3,14 +3,24 @@ import { formatQty } from "@/lib/format";
 import type { Suggestion } from "./actions";
 import type { ChatMessage, ChatMessageOf } from "./types";
 
-export function deriveSuggestions(messages: ChatMessage[], mode: "ai" | "human"): Suggestion[] {
+/** การ์ดข้อเสนอที่เก่ากว่านี้ยืนยันไม่ได้ (ราคา/สต๊อกอาจเปลี่ยนแล้ว) — ไม่ชวนให้เลือกอีก */
+export const OFFER_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function isOfferCardExpired(offers: ChatMessageOf<"offers">, now: Date): boolean {
+  return now.getTime() - Date.parse(offers.at) > OFFER_TTL_MS;
+}
+
+export function deriveSuggestions(messages: ChatMessage[], mode: "ai" | "human", now = new Date()): Suggestion[] {
   if (mode === "human") return [];
 
   const last = messages.at(-1);
   if (last?.type === "order_summary") return [{ label: "ต่อราคาสินค้าอื่น", action: { type: "open_products" } }];
 
   const lastAiText = [...messages].reverse().find((m) => m.type === "ai_text");
-  if (lastAiText?.type === "ai_text" && lastAiText.suggest === "trade_offs") return tradeOffChips(lastOffers(messages));
+  if (lastAiText?.type === "ai_text" && lastAiText.suggest === "trade_offs") {
+    const offers = lastOffers(messages);
+    return offers && !isOfferCardExpired(offers, now) ? tradeOffChips(offers) : [];
+  }
 
   const started = messages.some((m) => m.type === "product_card" || m.type === "offers" || m.type === "buyer_text");
   return started ? [] : [{ label: "ดูสินค้าทั้งหมด", action: { type: "open_products" } }];

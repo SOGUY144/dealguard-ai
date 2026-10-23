@@ -1,9 +1,11 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { FormState } from "@/lib/auth/form-state";
 import { authErrorMessage, parseLogin, parseSignup } from "@/lib/auth/forms";
-import { landingPath, safeNextPath } from "@/lib/auth/routes";
+import { allow, LIMITS, notExceeded, record, TOO_MANY_TRIES } from "@/lib/auth/rate-limit";
+import { canSetNewPassword, clientIp, landingPath, safeNextPath } from "@/lib/auth/routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
@@ -22,9 +24,20 @@ export async function login(_prev: FormState, form: FormData): Promise<FormState
   const values = { email: String(form.get("email") ?? "") };
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors, values };
 
+  // กันเดารหัสผ่าน: นับทุกครั้งต่อ IP + นับเฉพาะครั้งที่ผิดต่อ (อีเมล, IP)
+  // แยก IP ไว้ — คนอื่นใส่รหัสผิดรัวๆ จะล็อกบัญชีเถ้าแก่ของคนที่อยู่เครื่องอื่นไม่ได้
+  const ip = clientIp(await headers());
+  const failKey = `login:fail:${parsed.data.email.toLowerCase()}:${ip}`;
+  const ok =
+    (await allow(`login:ip:${ip}`, LIMITS.loginPerIp)) && (await notExceeded(failKey, LIMITS.loginFailuresPerEmailIp));
+  if (!ok) return { error: TOO_MANY_TRIES, values };
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
-  if (error) return { error: authErrorMessage(error), values };
+  if (error) {
+    await record(failKey);
+    return { error: authErrorMessage(error), values };
+  }
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).single();
   redirect(landingPath(profile?.role ?? "buyer", safeNextPath(String(form.get("next") ?? "/"))));
@@ -36,6 +49,10 @@ export async function signup(_prev: FormState, form: FormData): Promise<FormStat
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors, values };
 
   const { displayName, email, password } = parsed.data;
+  // กันสมัครบัญชีทิ้งรัวๆ (ใช้ลองหาเกณฑ์/ราคาพื้นของร้าน)
+  if (!(await allow(`signup:ip:${clientIp(await headers())}`, LIMITS.signupPerIp))) {
+    return { error: TOO_MANY_TRIES, values };
+  }
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -59,6 +76,9 @@ export async function signup(_prev: FormState, form: FormData): Promise<FormStat
 export async function requestPasswordReset(_prev: FormState, form: FormData): Promise<FormState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   if (!email.includes("@")) return { fieldErrors: { email: "อีเมลไม่ถูกต้อง" }, values: { email } };
+  if (!(await allow(`reset:ip:${clientIp(await headers())}`, LIMITS.resetPerIp))) {
+    return { error: TOO_MANY_TRIES, values: { email } };
+  }
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -79,6 +99,12 @@ export async function updatePassword(_prev: FormState, form: FormData): Promise<
   if (password.length < 8) return { fieldErrors: { password: "รหัสผ่านอย่างน้อย 8 ตัวอักษร" } };
 
   const supabase = await createSupabaseServerClient();
+  // ต้องมาจากลิงก์ในอีเมลเมื่อไม่นานนี้ — แค่มี session (ยืมเครื่อง/ขโมย cookie) เปลี่ยนรหัสยึดบัญชีไม่ได้
+  const { data } = await supabase.auth.getClaims();
+  const amr = data?.claims?.amr as { method: string; timestamp: number }[] | undefined;
+  if (!canSetNewPassword(amr, Math.floor(Date.now() / 1000))) {
+    return { error: "ลิงก์ตั้งรหัสผ่านหมดอายุหรือใช้ไม่ได้ ขอลิงก์ใหม่จากหน้าลืมรหัสผ่าน" };
+  }
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: authErrorMessage(error) };
   redirect("/");

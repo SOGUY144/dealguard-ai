@@ -136,6 +136,8 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
               storefront={storefront}
               buyerName={buyerName}
               pending={pending}
+              mode={chat.mode}
+              today={live && !scenario ? new Date() : undefined}
               onSelectOffer={(messageId, offerId) => void dispatch({ type: "select_offer", messageId, offerId })}
               onConfirmOffer={(messageId, offerId) => void dispatch({ type: "confirm_offer", messageId, offerId })}
               onOpenProducts={openProducts}

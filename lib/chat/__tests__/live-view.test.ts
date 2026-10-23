@@ -30,8 +30,10 @@ describe("live-view", () => {
     const pending = withPendingBuyerText(view, "ขอ 125", "text", at);
     expect(pending.suggestions).toEqual([]);
     expect(pending.messages.at(-1)).toMatchObject({ type: "buyer_text", text: "ขอ 125" });
-    const failed = withSendError(pending, at);
+    const failed = withSendError(pending, at, view.suggestions);
     expect(failed.messages.some((m) => m.type === "buyer_text")).toBe(false);
     expect(failed.messages.at(-1)).toMatchObject({ type: "ai_text" });
+    // chip เดิม (เช่น "สั่ง 1,500 ชิ้น" / "จ่ายสด") กลับมา ไม่หายไปหลังส่งไม่สำเร็จ
+    expect(failed.suggestions).toEqual(view.suggestions);
   });
 });

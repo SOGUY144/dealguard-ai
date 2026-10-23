@@ -102,10 +102,40 @@ describe("buildOffers — กรณีอื่น", () => {
     expect(bundle?.offer.pricePerUnit).toBe(145);
   });
 
-  it("ไม่บอกราคา → คิดเหมือนขอที่ราคาพื้น และ baseline ใช้ราคาขาย", () => {
+  it("ของแถมระบุ SKU (หักสต๊อกด้วย SKU ไม่ใช่ชื่อ — เถ้าแก่เปลี่ยนชื่อได้)", () => {
+    const { offers } = buildOffers(cable, config, { requestedPrice: 125, qty: 1000 });
+    expect(offers.find((p) => p.offer.lever === "bundle")?.offer.bundle).toEqual({ sku: "ADP-20W", name: "หัวชาร์จ 20W", qty: 200 });
+  });
+
+  it("ไม่บอกราคา → ข้อ C คิดเหมือนขอที่ราคาพื้น", () => {
     const { offers } = buildOffers(cable, config, { requestedPrice: null, qty: 1000 });
     const bundle = offers.find((p) => p.offer.lever === "bundle");
     expect(bundle?.offer.pricePerUnit).toBe(144);
-    expect(offers[0].economics.marginIfConceded).toBe(50_000);
+  });
+
+  // ทีมตัดสิน 24 ต.ค. 2569: ไม่ได้ขอราคา = ไม่มีอะไรที่ "ยอมลด" ไป → กำไรที่รักษาไว้เป็น 0 ไม่ติดลบ
+  it("ไม่บอกราคา → กำไรที่รักษาไว้ = 0 ทุกข้อ (baseline = ข้อเสนอนั้นเอง)", () => {
+    const { offers } = buildOffers(cable, config, { requestedPrice: null, qty: 1000 });
+    for (const { economics } of offers) {
+      expect(economics.recoveredMargin).toBe(0);
+      expect(economics.marginIfConceded).toBe(economics.marginOffer);
+    }
+  });
+
+  it("สินค้าที่ปกติโอนทันทีอยู่แล้ว (เครดิต 0 วัน) → ไม่มีข้อ 'จ่ายสด' เพราะลูกค้าไม่ได้เสียอะไรแลก", () => {
+    const cod = { ...cable, defaultCreditDays: 0 };
+    const { offers } = buildOffers(cod, config, { requestedPrice: 125, qty: 1000 });
+    expect(offers.map((p) => p.offer.lever)).not.toContain("cash");
+  });
+
+  it("ข้อ C ที่ราคาเท่าราคาขาย (ขอ ฿149) → ไม่เสนอ เพราะแถมของฟรีโดยไม่มีอะไรแลก", () => {
+    const { offers } = buildOffers(cable, config, { requestedPrice: 149, qty: 1000 });
+    expect(offers.map((p) => p.offer.lever)).not.toContain("bundle");
+  });
+
+  it("ทุกข้อเกินเกณฑ์ → บอกยอดรวมของข้อที่ถูกที่สุดที่ถูกตัด", () => {
+    const built = buildOffers(cable, config, { requestedPrice: 125, qty: 2400, maxTotal: 300_000 });
+    expect(built.offers).toEqual([]);
+    expect(built.minDroppedTotal).toBe(324_000);
   });
 });

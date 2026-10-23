@@ -52,3 +52,23 @@ describe("assertOffersSafe", () => {
     expect(() => assertOffersSafe(cable, 1000, [list])).toThrow(/concession/i);
   });
 });
+
+describe("assertOffersSafe — No Free Concession (รีวิว 24 ต.ค. 2569)", () => {
+  const cash: Offer = {
+    id: "B", lever: "cash", label: "จ่ายสด", pricePerUnit: 135, qty: 1000,
+    conditionText: "", total: 135_000, creditDays: 0,
+  };
+  const bundleAtList: Offer = {
+    id: "C", lever: "bundle", label: "รับของแถม", pricePerUnit: 150, qty: 1000,
+    conditionText: "", total: 150_000, creditDays: 30, bundle: { name: "หัวชาร์จ 20W", qty: 20 },
+  };
+
+  it("จ่ายสดกับสินค้าที่ปกติเครดิต 0 วัน = ลดฟรี → ไม่ผ่าน", () => {
+    expect(() => assertOffersSafe({ ...cable, defaultCreditDays: 0 }, 1000, [cash])).toThrow(/No Free Concession/);
+  });
+
+  it("ของแถมที่ราคาเท่าราคาขาย = ให้ฟรี → ไม่ผ่าน", () => {
+    expect(() => assertOffersSafe(cable, 1000, [bundleAtList])).toThrow(/No Free Concession/);
+  });
+});
+

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideAccess, isSameOrigin, landingPath, safeNextPath, sessionResetAction } from "../routes";
+import { canSetNewPassword, clientIp, decideAccess, isSameOrigin, landingPath, safeNextPath, sessionResetAction } from "../routes";
 
 describe("decideAccess (proxy — เช็กเบื้องต้น ก่อนเข้าแต่ละหน้า)", () => {
   it("ยังไม่ล็อกอิน เข้าหน้าแชต → ไปล็อกอิน แล้วจำหน้าที่จะกลับมา", () => {
@@ -122,3 +122,34 @@ describe("sessionResetAction (บัญชีถูกลบแต่ session �
     expect(sessionResetAction({ signedIn: false, profile: "missing" })).toBe("login");
   });
 });
+
+describe("canSetNewPassword (ตั้งรหัสใหม่ได้เฉพาะคนที่เพิ่งเปิดลิงก์จากอีเมล)", () => {
+  const now = 1_800_000_000;
+  it("เพิ่งเข้าด้วยลิงก์ตั้งรหัสผ่าน (recovery) ไม่เกิน 15 นาที → ได้", () => {
+    expect(canSetNewPassword([{ method: "recovery", timestamp: now - 60 }], now)).toBe(true);
+  });
+  it("ล็อกอินด้วยรหัสผ่านธรรมดา → ไม่ได้ (คนที่ยืมเครื่อง/ขโมย session มาเปลี่ยนรหัสยึดบัญชีไม่ได้)", () => {
+    expect(canSetNewPassword([{ method: "password", timestamp: now - 60 }], now)).toBe(false);
+  });
+  it("ลิงก์เก่าเกิน 15 นาที → ไม่ได้", () => {
+    expect(canSetNewPassword([{ method: "recovery", timestamp: now - 16 * 60 }], now)).toBe(false);
+  });
+  // วัดจริงกับ Supabase 24 ต.ค. 2569: ลิงก์ตั้งรหัสผ่านให้ amr = "otp" (ไม่ใช่ "recovery")
+  it("เพิ่งเข้าด้วยลิงก์จากอีเมล (amr = otp) → ได้", () => {
+    expect(canSetNewPassword([{ method: "otp", timestamp: now - 60 }], now)).toBe(true);
+  });
+
+  it("ไม่มีข้อมูล amr → ไม่ได้", () => {
+    expect(canSetNewPassword(undefined, now)).toBe(false);
+  });
+});
+
+describe("clientIp (ใช้นับจำนวนครั้งที่ลอง)", () => {
+  it("เอาตัวแรกของ x-forwarded-for (ที่ proxy ของ Vercel ใส่)", () => {
+    expect(clientIp(new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }))).toBe("203.0.113.7");
+  });
+  it("ไม่มี header → unknown", () => {
+    expect(clientIp(new Headers())).toBe("unknown");
+  });
+});
+

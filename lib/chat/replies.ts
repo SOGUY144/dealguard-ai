@@ -20,6 +20,8 @@ export type ReplyContext = {
   openOffers?: ChatMessageOf<"offers">;
   /** ลูกค้าถามต้นทุน/ราคาพื้น/กำไร */
   asksCost?: boolean;
+  /** ราคาที่ลูกค้าอ้างว่าร้านอื่นให้ (ไม่ลดตาม แต่ตอบให้รู้ว่าได้ยิน) */
+  competitorPrice?: number | null;
 };
 
 export type Reply = {
@@ -48,6 +50,35 @@ export function productIntroText(product: PublicProduct): string {
 /** ลูกค้าพิมพ์เลือกข้อเสนอที่มีอยู่แล้ว (เช่น "สั่ง 1,500 ชิ้น" = ข้อ A) */
 export function pickedOfferText(offer: Offer): string {
   return `ได้ครับ ข้อ ${offer.id} ${offer.label} ${formatQty(offer.qty)} ชิ้น ราคา ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} กดยืนยันได้เลยครับ`;
+}
+
+/** ลูกค้าอ้างราคาร้านอื่นหลังได้ข้อเสนอแล้ว — ไม่ลดตาม ชวนกลับไปดูข้อเสนอเดิม (SKILL §7 "ร้านข้างๆ ให้ 110") */
+export function competitorReply(open: ChatMessageOf<"offers">, competitorPrice: number, ownerName: string): Reply {
+  return {
+    messages: [
+      {
+        type: "ai_text",
+        text: `ราคา ${formatBaht(competitorPrice)} ของร้านอื่น${ownerName}ลดตามไม่ได้ครับ แต่ยังเลือกจาก ${open.offers.length} ทางเดิมได้ ซื้อเยอะหรือจ่ายสดจะได้ราคาดีขึ้นครับ`,
+        cta: "show_offers",
+        suggest: "trade_offs",
+      },
+    ],
+  };
+}
+
+/** "สั่ง 1,000 ชิ้น" ตรงกับหลายข้อ — ถามให้เลือก ไม่เดา ไม่ต่อราคารอบใหม่ */
+export function ambiguousOfferReply(offers: Offer[]): Reply {
+  const letters = offers.map((o) => o.id);
+  const names = `${letters.slice(0, -1).join(", ")} กับ ${letters.at(-1)}`;
+  return {
+    messages: [
+      {
+        type: "ai_text",
+        text: `ข้อ ${names} เป็น ${formatQty(offers[0].qty)} ชิ้นทั้งคู่ครับ เลือกข้อที่ต้องการจากการ์ดด้านบน แล้วกดยืนยันได้เลยครับ`,
+        cta: "show_offers",
+      },
+    ],
+  };
 }
 
 /** หัวข้อในการ์ดส่งต่อที่ลูกค้าเห็น — ห้ามมีเหตุผลภายใน เช่น เกณฑ์มูลค่า */
@@ -94,6 +125,15 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
     }
 
     case "ask_quantity":
+      if (ctx.competitorPrice != null) {
+        return {
+          messages: [
+            text(
+              `ร้านอื่นให้ ${formatBaht(ctx.competitorPrice)} ${owner}ลดตามไม่ได้ครับ แต่ถ้าบอกจำนวน เดี๋ยวหาข้อเสนอที่คุ้มที่สุดให้ครับ ต้องการกี่ชิ้นครับ`,
+            ),
+          ],
+        };
+      }
       return { messages: [text(product ? `${listInfo(product)} ต้องการกี่ชิ้นครับ` : "ต้องการกี่ชิ้นครับ")] };
 
     case "ask_product":

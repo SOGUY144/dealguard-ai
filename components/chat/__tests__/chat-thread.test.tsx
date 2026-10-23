@@ -39,6 +39,42 @@ describe("ChatThread", () => {
     expect(screen.getByText("วันนี้ · 21:30")).toBeInTheDocument();
   });
 
+  it("แชตจริงที่เริ่มวันก่อน → ป้ายบอกวันที่จริง ไม่ใช่ 'วันนี้'", () => {
+    const state = buildScenario("start", { storefront, products, buyerName: "คุณนก" });
+    render(
+      <ChatThread
+        messages={state.messages}
+        storefront={storefront}
+        buyerName="คุณนก"
+        today={new Date(Date.parse(state.messages[0].at) + 2 * 24 * 60 * 60 * 1000)}
+        onSelectOffer={vi.fn()}
+        onConfirmOffer={vi.fn()}
+        onOpenProducts={vi.fn()}
+        onShowOffers={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/^วันนี้/)).not.toBeInTheDocument();
+    expect(screen.getByText(/ต\.ค\. 2569 · 21:30/)).toBeInTheDocument();
+  });
+
+  it("ส่งเรื่องให้เถ้าแก่แล้ว (โหมด human) → การ์ดข้อเสนอเดิมล็อก กดยืนยันไม่ได้", () => {
+    const state = buildScenario("offers", { storefront, products, buyerName: "คุณนก" });
+    const messages = state.messages.map((m) => (m.type === "offers" ? { ...m, selectedId: "A" as const } : m));
+    render(
+      <ChatThread
+        messages={messages}
+        storefront={storefront}
+        buyerName="คุณนก"
+        mode="human"
+        onSelectOffer={vi.fn()}
+        onConfirmOffer={vi.fn()}
+        onOpenProducts={vi.fn()}
+        onShowOffers={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /ยืนยันข้อ/ })).not.toBeInTheDocument();
+  });
+
   it("ข้อความแรกบอกว่าเป็นผู้ช่วย AI และปุ่มในฟองเปิดรายการสินค้า", () => {
     const { handlers } = renderScenario("start");
     expect(screen.getByText(/สวัสดีครับ ผู้ช่วย AI ของเฮียชัยครับ/)).toBeInTheDocument();

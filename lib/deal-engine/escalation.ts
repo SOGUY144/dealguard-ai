@@ -14,10 +14,11 @@ export type BriefContext = {
   price?: number | null;
   /** มูลค่าดีลที่ใช้เทียบเกณฑ์ escalate */
   value?: number;
-  valueBasis?: "requested" | "list" | "floor";
+  /** offer = ทุกข้อเสนอถูกตัดเพราะยอดรวมเกิน — value คือยอดของข้อที่ถูกที่สุด */
+  valueBasis?: "requested" | "list" | "floor" | "offer";
 };
 
-const BASIS_NOTE = { requested: "", list: " (ราคาขาย)", floor: " (คิดที่ราคาพื้น)" } as const;
+const BASIS_NOTE = { requested: "", list: " (ราคาขาย)", floor: " (คิดที่ราคาพื้น)", offer: "" } as const;
 
 /** Deal Brief 3 บรรทัดให้เถ้าแก่ (SKILL §6.4 ข้อ 6) — หน้าเถ้าแก่เอามาต่อกันด้วย " · " */
 export function buildBrief(reason: EscalationKind, ctx: BriefContext): Brief {
@@ -31,7 +32,9 @@ export function buildBrief(reason: EscalationKind, ctx: BriefContext): Brief {
     case "over_value":
       return [
         `${buyerName} ขอ${productName} ${formatQty(qty)} ชิ้น${atPrice}`,
-        `มูลค่าราว ${formatBaht(ctx.value ?? 0)}${BASIS_NOTE[ctx.valueBasis ?? "requested"]} เกินเกณฑ์ ${formatBaht(config.escalationDealValue)}`,
+        ctx.valueBasis === "offer"
+          ? `ข้อเสนอที่ถูกที่สุดรวม ${formatBaht(ctx.value ?? 0)} เกินเกณฑ์ ${formatBaht(config.escalationDealValue)}`
+          : `มูลค่าราว ${formatBaht(ctx.value ?? 0)}${BASIS_NOTE[ctx.valueBasis ?? "requested"]} เกินเกณฑ์ ${formatBaht(config.escalationDealValue)}`,
         "AI ยังไม่เสนอราคา",
       ];
     case "refund":

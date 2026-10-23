@@ -69,3 +69,25 @@ export function sessionResetAction({
   if (profile === "found") return "continue";
   return profile === "missing" ? "sign_out" : "retry_later";
 }
+
+/** ลิงก์ตั้งรหัสผ่านจากอีเมลใช้ได้นานเท่านี้หลังเปิด */
+const RECOVERY_WINDOW_SECONDS = 15 * 60;
+
+/** วิธีเข้าระบบที่พิสูจน์ว่าเพิ่งเปิดลิงก์จากอีเมล — Supabase ให้ "otp" กับลิงก์ตั้งรหัสผ่าน (วัดจริง 24 ต.ค. 2569) */
+const EMAIL_LINK_METHODS = new Set(["otp", "recovery", "magiclink"]);
+
+/**
+ * ตั้งรหัสใหม่ได้เฉพาะ session ที่เพิ่งได้จากลิงก์ในอีเมล
+ * คนที่แค่มี session จากการใส่รหัส (ยืมเครื่อง / ขโมย cookie) เปลี่ยนรหัสเพื่อยึดบัญชีไม่ได้
+ */
+export function canSetNewPassword(
+  amr: { method: string; timestamp: number }[] | undefined,
+  nowSeconds: number,
+): boolean {
+  return (amr ?? []).some((a) => EMAIL_LINK_METHODS.has(a.method) && nowSeconds - a.timestamp <= RECOVERY_WINDOW_SECONDS);
+}
+
+/** IP ของผู้ใช้จริง — Vercel ใส่ไว้ตัวแรกของ x-forwarded-for */
+export function clientIp(headers: Headers): string {
+  return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip") || "unknown";
+}

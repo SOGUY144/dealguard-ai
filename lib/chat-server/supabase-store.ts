@@ -9,9 +9,6 @@ import type { ChatStore, StoredChat, StoredOffer } from "./store";
 
 type Row = Record<string, unknown>;
 
-/** error ของ Postgres ที่บอกว่าซ้ำ (unique) */
-const UNIQUE_VIOLATION = "23505";
-
 function must<T>(label: string, { data, error }: { data: T | null; error: { message: string } | null }): T {
   if (error) throw new Error(`[store] ${label}: ${error.message}`);
   return data as T;
@@ -19,12 +16,20 @@ function must<T>(label: string, { data, error }: { data: T | null; error: { mess
 
 const num = (v: unknown) => Number(v);
 
+/** ตัวนับอยู่ตาราง chat_negotiation (owner อ่านได้คนเดียว) — embed มากับแชต */
+const CHAT_COLUMNS = "*, chat_negotiation(below_floor_count, injection_count)";
+
 function toChat(row: Row): StoredChat {
+  const raw = row.chat_negotiation;
+  const counters = (Array.isArray(raw) ? raw[0] : raw) as Row | null | undefined;
   return {
     id: String(row.id),
     buyerId: String(row.buyer_id),
     mode: row.mode === "human" ? "human" : "ai",
-    negotiation: { belowFloorCount: num(row.below_floor_count), injectionCount: num(row.injection_count) },
+    negotiation: {
+      belowFloorCount: num(counters?.below_floor_count ?? 0),
+      injectionCount: num(counters?.injection_count ?? 0),
+    },
   };
 }
 
@@ -94,6 +99,8 @@ export class SupabaseChatStore implements ChatStore {
       await this.db
         .from("merchants")
         .select("*, products(*), dead_stock(*)")
+        // เถ้าแก่ปิด "ให้ AI ต่อราคาสินค้านี้" → ไม่แสดง ไม่เสนอราคา ไม่ยืนยันข้อเสนอเก่า
+        .eq("products.ai_enabled", true)
         .order("created_at")
         .order("created_at", { referencedTable: "products" })
         .order("created_at", { referencedTable: "dead_stock" })
@@ -135,7 +142,7 @@ export class SupabaseChatStore implements ChatStore {
       "อ่านแชต",
       await this.db
         .from("chats")
-        .select("*")
+        .select(CHAT_COLUMNS)
         .eq("buyer_id", buyerId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -152,7 +159,7 @@ export class SupabaseChatStore implements ChatStore {
       await this.db
         .from("chats")
         .upsert({ merchant_id: merchantId, buyer_id: buyerId }, { onConflict: "merchant_id,buyer_id", ignoreDuplicates: true })
-        .select("*"),
+        .select(CHAT_COLUMNS),
     );
     if (inserted.length === 0) {
       const existing = await this.findChat(buyerId);
@@ -192,6 +199,32 @@ export class SupabaseChatStore implements ChatStore {
     );
   }
 
+  async deleteMessages(chatId: string, ids: string[]) {
+    if (ids.length === 0) return;
+    // ข้อเสนอของการ์ดที่ถูกถอนลบตาม (offers.message_id on delete cascade)
+    must("ถอนข้อความ", await this.db.from("messages").delete().eq("chat_id", chatId).in("id", ids));
+  }
+
+  async findOrderForCard(chatId: string, offerMessageId: string) {
+    const row = must<Row | null>(
+      "อ่านออเดอร์ของการ์ด",
+      await this.db
+        .from("orders")
+        .select("id, created_at, offers(letter)")
+        .eq("chat_id", chatId)
+        .eq("offer_message_id", offerMessageId)
+        .maybeSingle(),
+    );
+    if (!row) return null;
+    const offer = (Array.isArray(row.offers) ? row.offers[0] : row.offers) as Row | null;
+    if (!offer) return null;
+    return {
+      orderId: String(row.id),
+      letter: offer.letter as Offer["id"],
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    };
+  }
+
   async setMode(chatId: string, mode: StoredChat["mode"]) {
     must("เปลี่ยนโหมดแชต", await this.db.from("chats").update({ mode }).eq("id", chatId));
   }
@@ -201,52 +234,41 @@ export class SupabaseChatStore implements ChatStore {
     const updated = must<Row[]>(
       "แก้ตัวนับการต่อราคา",
       await this.db
-        .from("chats")
+        .from("chat_negotiation")
         .update({ below_floor_count: next.belowFloorCount, injection_count: next.injectionCount })
-        .eq("id", chatId)
+        .eq("chat_id", chatId)
         .eq("below_floor_count", expected.belowFloorCount)
         .eq("injection_count", expected.injectionCount)
-        .select("id"),
+        .select("chat_id"),
     );
     return updated.length > 0;
   }
 
   async saveOffers(chatId: string, messageId: string, sku: string, priced: PricedOffer[]) {
-    const inserted = must<Row[]>(
-      "เก็บข้อเสนอ",
-      await this.db
-        .from("offers")
-        .insert(
-          priced.map(({ offer }) => ({
-            chat_id: chatId,
-            message_id: messageId,
-            letter: offer.id,
-            lever: offer.lever,
-            sku,
-            label: offer.label,
-            price_per_unit: offer.pricePerUnit,
-            qty: offer.qty,
-            condition_text: offer.conditionText,
-            total: offer.total,
-            credit_days: offer.creditDays,
-            bundle: offer.bundle ?? null,
-          })),
-        )
-        .select("id, letter"),
-    );
-    const idOf = new Map(inserted.map((r) => [String(r.letter), String(r.id)]));
+    // ข้อเสนอ + margin ใน transaction เดียว (RPC) — margin เขียนไม่ได้ ข้อเสนอก็ไม่ถูกเก็บ
     must(
-      "เก็บ margin",
-      await this.db.from("offer_economics").insert(
-        priced.map(({ offer, economics }) => ({
-          offer_id: idOf.get(offer.id),
+      "เก็บข้อเสนอ",
+      await this.db.rpc("save_offers", {
+        p_chat: chatId,
+        p_message: messageId,
+        p_sku: sku,
+        p_offers: priced.map(({ offer, economics }) => ({
+          letter: offer.id,
+          lever: offer.lever,
+          label: offer.label,
+          price_per_unit: offer.pricePerUnit,
+          qty: offer.qty,
+          condition_text: offer.conditionText,
+          total: offer.total,
+          credit_days: offer.creditDays,
+          bundle: offer.bundle ?? null,
           margin_if_conceded: economics.marginIfConceded,
           margin_offer: economics.marginOffer,
           recovered_margin: economics.recoveredMargin,
           bundle_cost: economics.bundleCost,
           cash_value: economics.cashValue,
         })),
-      ),
+      }),
     );
   }
 
@@ -261,30 +283,34 @@ export class SupabaseChatStore implements ChatStore {
         .eq("letter", letter)
         .maybeSingle(),
     );
-    return row ? { rowId: String(row.id), sku: String(row.sku), offer: toOffer(row) } : null;
+    return row
+      ? {
+          rowId: String(row.id),
+          sku: String(row.sku),
+          offer: toOffer(row),
+          createdAt: new Date(String(row.created_at)).toISOString(),
+        }
+      : null;
   }
 
-  async createOrder(input: { chatId: string; buyerId: string; offerRowId: string; productName: string }) {
-    const { data, error } = await this.db
-      .from("orders")
-      .insert({
-        merchant_id: await this.merchantIdOf(),
-        chat_id: input.chatId,
-        buyer_id: input.buyerId,
-        offer_id: input.offerRowId,
-        product_name: input.productName,
-      })
-      .select("id")
-      .single();
-    if (error?.code === UNIQUE_VIOLATION) return null;
+  async createOrder(input: Parameters<ChatStore["createOrder"]>[0]) {
+    const { data, error } = await this.db.rpc("place_order", {
+      p_chat: input.chatId,
+      p_buyer: input.buyerId,
+      p_offer: input.offerRowId,
+      p_offer_message: input.offerMessageId,
+      p_product_name: input.productName,
+      p_gift_sku: input.gift?.sku ?? null,
+      p_gift_name: input.gift?.name ?? null,
+      p_gift_qty: input.gift?.qty ?? null,
+    });
+    // ของแถมไม่พอ → ยกเลิกทั้งออเดอร์ (ฟังก์ชันใน DB rollback ให้แล้ว)
+    if (error?.message.includes("gift_out_of_stock")) return null;
     if (error) throw new Error(`[store] สร้างออเดอร์: ${error.message}`);
-    return { orderId: String(data.id) };
+    return data ? { orderId: String(data) } : null;
   }
 
-  async createEscalation(chatId: string, kind: HandoffKind, brief: Brief) {
-    must(
-      "ส่งเรื่องให้เถ้าแก่",
-      await this.db.from("escalations").insert({ merchant_id: await this.merchantIdOf(), chat_id: chatId, kind, brief }),
-    );
+  async escalate(chatId: string, kind: HandoffKind, brief: Brief) {
+    must("ส่งเรื่องให้เถ้าแก่", await this.db.rpc("escalate_chat", { p_chat: chatId, p_kind: kind, p_brief: brief }));
   }
 }

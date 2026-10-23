@@ -127,6 +127,13 @@ describe("runDealEngine — กรณีขอบที่พบจากกา�
     expect(result).toMatchObject({ kind: "escalate", reason: "over_value" });
   });
 
+  it("ทุกข้อถูกตัดเพราะยอดรวมเกิน → brief บอกยอดของข้อที่ถูกที่สุด ไม่ใช่มูลค่าที่ต่ำกว่าเกณฑ์", () => {
+    const result = run({ quantity: 2400, requestedPrice: 125 });
+    expect(result.kind).toBe("escalate");
+    if (result.kind !== "escalate") return;
+    expect(result.brief[1]).toBe("ข้อเสนอที่ถูกที่สุดรวม ฿324,000 เกินเกณฑ์ ฿300,000");
+  });
+
   it("ขอราคาต่ำมากเพื่อหลบเกณฑ์มูลค่า → ประเมินมูลค่าที่ราคาพื้น แล้วส่งให้เถ้าแก่", () => {
     expect(run({ quantity: 10_000_000, requestedPrice: 0.01 })).toMatchObject({ kind: "escalate", reason: "over_value" });
   });

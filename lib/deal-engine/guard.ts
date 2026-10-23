@@ -33,9 +33,11 @@ function hasTradeOff(product: Product, requestedQty: number, offer: Offer): bool
       return offer.pricePerUnit === product.listPrice;
     case "volume":
       return offer.qty > requestedQty;
+    // ต้องสละเครดิตที่ปกติได้ — สินค้าเครดิต 0 วัน "จ่ายสด" ไม่มีอะไรแลก
     case "cash":
-      return offer.creditDays === 0;
+      return offer.creditDays === 0 && product.defaultCreditDays > 0;
+    // ของแถมแทนส่วนลด — ราคาเท่าราคาขาย + แถม = ให้ฟรี
     case "bundle":
-      return (offer.bundle?.qty ?? 0) > 0;
+      return (offer.bundle?.qty ?? 0) > 0 && offer.pricePerUnit < product.listPrice;
   }
 }

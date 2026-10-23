@@ -55,7 +55,8 @@ export type Offer = {
   conditionText: string;
   total: number;
   creditDays: number;
-  bundle?: { name: string; qty: number };
+  /** sku ใช้หักสต๊อก (ชื่อเถ้าแก่เปลี่ยนได้) · ข้อเสนอเก่าก่อน 24 ต.ค. 2569 ไม่มี sku */
+  bundle?: { sku?: string; name: string; qty: number };
 };
 
 /** ตัวเลขหลังบ้านของแต่ละข้อเสนอ — แสดงได้เฉพาะหน้าเถ้าแก่ */

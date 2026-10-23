@@ -34,6 +34,8 @@ export type ParsedIntent = { source: "llm" | "fallback"; intent: Intent };
 export type IntentParseContext = { products: PublicProduct[]; lastSku: string | null; history: string[] };
 
 const DEFAULT_TIMEOUT_MS = 4000;
+/** คำที่บอกว่าลูกค้าขอราคานั้นเอง ไม่ใช่แค่เล่าราคาร้านอื่น */
+const ASKS_FOR_PRICE = /ขอ|ได้ไหม|ได้มั้ย|ได้ป่าว|ได้รึเปล่า|เหลือ|ลดเป็น/;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -64,7 +66,12 @@ export async function parseIntent(
       intent: {
         intent: out.intent,
         sku: known ? out.sku : ctx.lastSku,
-        requestedPrice: out.requested_price,
+        // GPT ชอบเอาราคาคู่แข่งมาใส่เป็นราคาที่ขอ ("ร้านข้างๆ ให้ 110") — เท่ากันพอดีและไม่มีคำขอ = แค่อ้างราคาร้านอื่น
+        // ("ร้านอื่นให้ 100 ขอ 100 ได้ไหม" ยังเป็นการขอราคา — ตัวนับต่ำกว่าพื้นต้องทำงาน)
+        requestedPrice:
+          out.requested_price !== null && out.requested_price === out.competitor_price && !ASKS_FOR_PRICE.test(text)
+            ? null
+            : out.requested_price,
         quantity: out.quantity,
         paymentTermsRequestedDays: out.payment_terms_requested_days,
         competitorClaim: out.competitor_price !== null ? { mentioned: true, price: out.competitor_price } : null,

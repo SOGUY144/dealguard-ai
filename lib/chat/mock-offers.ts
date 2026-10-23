@@ -32,6 +32,6 @@ export const MOCK_OFFERS: Offer[] = [
     conditionText: "1,000 ชิ้น + หัวชาร์จ 20W 200 ชิ้น",
     total: 145_000,
     creditDays: 30,
-    bundle: { name: "หัวชาร์จ 20W", qty: 200 },
+    bundle: { sku: "ADP-20W", name: "หัวชาร์จ 20W", qty: 200 },
   },
 ];

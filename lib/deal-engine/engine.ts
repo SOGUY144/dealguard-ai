@@ -45,13 +45,20 @@ export function runDealEngine(input: EngineInput): EngineResult {
   const requested = validPrice(intent.requestedPrice);
   // ประเมินมูลค่าที่ราคาพื้นเป็นอย่างต่ำ — ขอราคาต่ำมากจะหลบเกณฑ์ escalate ไม่ได้
   const valuePrice = Math.max(requested ?? product.listPrice, product.floorPrice);
-  const overValue = () =>
+  const overValue = (cheapestDropped?: number) =>
     escalate("over_value", {
       product,
       qty,
       price: requested,
-      value: qty * valuePrice,
-      valueBasis: requested === null ? "list" : requested < product.floorPrice ? "floor" : "requested",
+      value: cheapestDropped ?? qty * valuePrice,
+      valueBasis:
+        cheapestDropped !== undefined
+          ? "offer"
+          : requested === null
+            ? "list"
+            : requested < product.floorPrice
+              ? "floor"
+              : "requested",
     });
   if (qty * valuePrice > config.escalationDealValue) return overValue();
 
@@ -65,14 +72,16 @@ export function runDealEngine(input: EngineInput): EngineResult {
   if (state.belowFloorCount >= 3) return escalate("below_floor_3x", { product, qty, price: requested });
 
   // ข้อเสนอที่ยอดรวมเกินเกณฑ์ escalate ถือว่าเกินอำนาจของ AI
-  const { offers, droppedOverLimit } = buildOffers(product, config, {
+  const { offers, droppedOverLimit, minDroppedTotal } = buildOffers(product, config, {
     requestedPrice: requested,
     qty,
     maxTotal: config.escalationDealValue,
   });
   if (offers.length === 0) {
     // ทุกทางเกินอำนาจ → ให้เถ้าแก่ตัดสิน · ลดไม่ได้เลย (เช่น พื้น = ราคาขาย) → ขายราคาปกติ
-    return droppedOverLimit > 0 ? overValue() : { kind: "accept_list", offer: listOffer(input, product, qty), state };
+    return droppedOverLimit > 0 && minDroppedTotal !== null
+      ? overValue(minDroppedTotal)
+      : { kind: "accept_list", offer: listOffer(input, product, qty), state };
   }
   assertOffersSafe(product, qty, offers.map((p) => p.offer));
   return { kind: "offers", offers, state };

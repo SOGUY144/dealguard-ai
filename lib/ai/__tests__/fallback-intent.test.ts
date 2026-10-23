@@ -53,4 +53,74 @@ describe("fallbackIntent", () => {
   it("ข้อความอื่นๆ → other", () => {
     expect(parse("สวัสดีครับ").intent).toBe("other");
   });
+
+  // รีวิว: "ขอ" + จำนวน ถูกอ่านเป็นราคา (regex ถอยตัวเลขทีละหลัก) → แต่งราคาที่ลูกค้าไม่ได้ขอ
+  it.each([
+    ["ขอ 1000 ชิ้น", null, 1000],
+    ["ขอ 1,000 ชิ้น ราคา 125", 125, 1000],
+    ["ขอ 50,000 ชิ้น", null, 50000],
+    ["ขอ 20 ชิ้น", null, 20],
+    ["ขอ 1000 อัน 125 บาท", 125, 1000],
+    ["ขอลด 10 บาท 1000 ชิ้น", null, 1000],
+  ])('"%s" → ราคา %s · จำนวน %s', (text, price, qty) => {
+    expect(parse(text)).toMatchObject({ requestedPrice: price, quantity: qty });
+  });
+
+  it('acceptance §7: "ขอ 125 ได้ไหม 1000 ชิ้น" / "ขอ 50,000 ชิ้น" / "ร้านข้างๆ ให้ 110"', () => {
+    expect(parse("ขอ 125 ได้ไหม 1000 ชิ้น")).toMatchObject({ requestedPrice: 125, quantity: 1000 });
+    expect(parse("ขอ 50,000 ชิ้น")).toMatchObject({ requestedPrice: null, quantity: 50000 });
+    expect(parse("ร้านข้างๆ ให้ 110")).toMatchObject({
+      requestedPrice: null,
+      competitorClaim: { mentioned: true, price: 110 },
+    });
+  });
+
+  it('ของเสีย/ชำรุด โดยไม่พูดว่าคืนเงิน → ร้องเรียน (ไม่ใช่สั่งของ 20 ชิ้น)', () => {
+    expect(parse("ของเสีย 20 ชิ้น")).toMatchObject({ intent: "complaint", quantity: null });
+    expect(parse("สายชำรุดหลายเส้นเลย")).toMatchObject({ intent: "complaint" });
+    expect(parse("ได้ของพังมา")).toMatchObject({ intent: "complaint" });
+  });
+
+  it("หลายสินค้าที่ชื่อขึ้นต้นเหมือนกัน → คำแรกอย่างเดียวไม่พอให้เลือก ใช้สินค้าล่าสุดในแชต", () => {
+    const many = [
+      { sku: "CBL-C-1M", name: "สายชาร์จ Type-C 1 เมตร", listPrice: 150 },
+      { sku: "CBL-L-1M", name: "สายชาร์จ Lightning 1 เมตร", listPrice: 180 },
+    ];
+    const run = (text: string, lastSku: string | null) => fallbackIntent(text, { products: many, lastSku });
+    expect(run("สายชาร์จ 500 ชิ้น", "CBL-L-1M").sku).toBe("CBL-L-1M");
+    expect(run("สายชาร์จ Lightning 1 เมตร 500 ชิ้น", "CBL-C-1M").sku).toBe("CBL-L-1M");
+    expect(run("CBL-C-1M 500 ชิ้น", "CBL-L-1M").sku).toBe("CBL-C-1M");
+  });
+
+  // รีวิวรอบ 2: คำธรรมดาของร้านสายชาร์จต้องไม่กลายเป็นร้องเรียน (AI จะหยุดตอบทั้งแชต)
+  it.each([
+    "หัวเสียบแบบ Type-C ขอ 130 1000 ชิ้น",
+    "ขอ 125 ได้ไหม 1000 ชิ้น ไม่อยากเสียเวลา",
+    "เสียดายจัง ขอ 130 ได้ไหม 1000 ชิ้น",
+    "แตกต่างจากรุ่นเก่ายังไง",
+    "ส่งพังงาได้ไหม 500 ชิ้น",
+    "ขอเสียบปลั๊กทดสอบได้ไหม",
+  ])('"%s" → ไม่ใช่ร้องเรียน', (text) => {
+    expect(parse(text).intent).not.toBe("complaint");
+  });
+
+  it.each(["สายเสีย 20 เส้น", "ได้สินค้าเสียมา", "ของแตกมาหลายชิ้น", "ใช้ไม่ได้เลยสักเส้น", "ชาร์จไม่เข้า ไม่ทำงาน"])(
+    '"%s" → ร้องเรียน',
+    (text) => {
+      expect(parse(text).intent).toBe("complaint");
+    },
+  );
+
+  it.each([
+    ["ขอ 125.- ได้ไหม 1000 ชิ้น", 125],
+    ["ขอ 125. 1000 ชิ้น", 125],
+    ["ขอ 127.50 ได้ไหม 1000 ชิ้น", 127.5],
+  ])('ราคาแบบไทย "%s" → %s', (text, price) => {
+    expect(parse(text)).toMatchObject({ requestedPrice: price, quantity: 1000 });
+  });
+
+  it("เลขไทย ๑๒๕ / ๑,๐๐๐ อ่านได้เหมือนเลขอารบิก", () => {
+    expect(parse("ขอ ๑๒๕ ได้ไหม ๑,๐๐๐ ชิ้น")).toMatchObject({ requestedPrice: 125, quantity: 1000 });
+  });
 });
+

@@ -1,10 +1,11 @@
 import { LoaderCircle } from "lucide-react";
+import Link from "next/link";
 import { Suspense } from "react";
 import { ChatScreenFromUrl } from "@/components/chat/chat-screen-from-url";
 import { warmUpIntentLlm } from "@/lib/ai/openai";
 import { requireUser } from "@/lib/auth/dal";
 import { createChatDeps } from "@/lib/chat-server/deps";
-import { loadChatPage } from "@/lib/chat-server/pipeline";
+import { loadChatPage, toPublicProducts } from "@/lib/chat-server/pipeline";
 import { storefront } from "@/lib/config/storefront";
 
 export default function Home() {
@@ -28,6 +29,8 @@ function ChatLoading() {
 
 async function BuyerChat() {
   const user = await requireUser("/");
+  // เถ้าแก่/กรรมการกด "เปิดหน้าลูกค้า" → ดูตัวอย่าง (ตัวตอบจำลอง) ไม่สร้างแชต/ออเดอร์จริง ยอดบนหน้าเถ้าแก่จึงไม่เพี้ยน
+  if (user.role === "owner") return <OwnerPreview />;
   // โหลดแชตเดิมที่ server เลย — หน้าแรกที่ส่งมาตรงกับใน browser (ไม่กระพริบ/ไม่ hydration mismatch)
   const { view: initialView, products } = await loadChatPage(createChatDeps(), {
     id: user.id,
@@ -45,3 +48,19 @@ async function BuyerChat() {
     />
   );
 }
+
+async function OwnerPreview() {
+  const config = await createChatDeps().store.loadConfig();
+  return (
+    <>
+      <p role="note" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-accent-tint px-4 py-2 text-center text-[13px] text-accent-ink">
+        หน้าตัวอย่างของลูกค้า — ข้อความไม่ถูกบันทึก และไม่นับเป็นยอดขาย
+        <Link href="/owner" className="font-semibold underline underline-offset-2">
+          กลับหน้าเถ้าแก่
+        </Link>
+      </p>
+      <ChatScreenFromUrl storefront={storefront} products={toPublicProducts(config)} buyerName="ลูกค้าตัวอย่าง" canLogout />
+    </>
+  );
+}
+

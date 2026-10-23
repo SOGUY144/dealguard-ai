@@ -34,3 +34,31 @@ export function formatBaht(n: number): string {
   }
   return `฿${Math.round(n).toLocaleString("en-US")}`;
 }
+
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** เที่ยงคืนของ "วันนี้" ตามเวลาไทย (UTC+7 ไม่มีเวลาออมแสง) */
+export function bangkokDayStart(now: Date): Date {
+  const local = now.getTime() + BANGKOK_OFFSET_MS;
+  return new Date(local - (local % DAY_MS) - BANGKOK_OFFSET_MS);
+}
+
+const THAI_DATE = new Intl.DateTimeFormat("th-TH", {
+  timeZone: "Asia/Bangkok",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/** "24 ต.ค. 2569" ตามเวลาไทย */
+export function thaiDate(date: Date): string {
+  return THAI_DATE.format(date);
+}
+
+/** หัวแชต: วันเดียวกับวันนี้ (เวลาไทย) → "วันนี้" · วันก่อน → วันที่จริง */
+export function formatDayLabel(iso: string, now: Date): string {
+  const at = new Date(iso);
+  return bangkokDayStart(at).getTime() === bangkokDayStart(now).getTime() ? "วันนี้" : thaiDate(at);
+}
+

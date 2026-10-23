@@ -3,7 +3,7 @@
 import { groupMessages, type MessageRow } from "@/lib/chat/group";
 import type { ChatMessage, Offer, Storefront } from "@/lib/chat/types";
 import { cn } from "@/lib/cn";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatDayLabel } from "@/lib/format";
 import { AiAvatar } from "@/components/ui/ai-avatar";
 import { buttonClass } from "@/components/ui/button";
 import { AiBubble, AiBubbleWithProductsCta, BuyerBubble, ProductCardMessage } from "./bubbles";
@@ -26,6 +26,10 @@ type Props = ThreadHandlers & {
   buyerName: string;
   /** รอคำตอบจาก server */
   pending?: boolean;
+  /** human = ส่งเรื่องให้เถ้าแก่แล้ว — การ์ดข้อเสนอเดิมกดยืนยันไม่ได้ */
+  mode?: "ai" | "human";
+  /** แชตจริง: ใช้เทียบว่าวันแรกของแชตคือ "วันนี้" ไหม (ไม่ใส่ = ตัวตอบจำลอง ถือว่าวันนี้) */
+  today?: Date;
 };
 
 /** element id ของข้อความ — ใช้เลื่อนกลับไปหาข้อเสนอ */
@@ -34,7 +38,15 @@ export const messageElementId = (id: string) => `msg-${id}`;
 // ข้อความ AI ที่ต้องกว้างกว่าฟองปกติ (เสียง, ข้อเสนอ, ใบสรุป, การ์ดส่งเรื่อง)
 const WIDE = new Set<ChatMessage["type"]>(["ai_voice", "offers", "order_summary", "handoff"]);
 
-export function ChatThread({ messages, storefront, buyerName, pending = false, ...handlers }: Props) {
+export function ChatThread({
+  messages,
+  storefront,
+  buyerName,
+  pending = false,
+  mode = "ai",
+  today,
+  ...handlers
+}: Props) {
   const rows = groupMessages(messages);
   const lastOffers = [...messages].reverse().find((m) => m.type === "offers");
 
@@ -47,7 +59,7 @@ export function ChatThread({ messages, storefront, buyerName, pending = false, .
     >
       {messages[0] && (
         <span className="self-center rounded-full border border-[#EFEAF8] bg-white/90 px-3 py-1 text-xs text-muted md:px-3.5 md:py-[5px]">
-          วันนี้ · {formatClock(messages[0].at)}
+          {today ? formatDayLabel(messages[0].at, today) : "วันนี้"} · {formatClock(messages[0].at)}
         </span>
       )}
       {rows.map((row) => (
@@ -59,6 +71,7 @@ export function ChatThread({ messages, storefront, buyerName, pending = false, .
           offersShown={lastOffers?.type === "offers" ? lastOffers.offers.length : 3}
           lastOffersId={lastOffers?.id}
           busy={pending}
+          locked={mode === "human"}
           {...handlers}
         />
       ))}
@@ -98,9 +111,11 @@ type RowProps = ThreadHandlers & {
   /** ข้อเสนอชุดล่าสุด — ชุดเก่ากดไม่ได้ กันยืนยันซ้อนกัน */
   lastOffersId?: string;
   busy: boolean;
+  /** ส่งเรื่องให้เถ้าแก่แล้ว */
+  locked: boolean;
 };
 
-function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, ...handlers }: RowProps) {
+function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, locked, ...handlers }: RowProps) {
   const first = row.messages[0];
 
   if (row.kind === "notice") {
@@ -141,7 +156,7 @@ function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, ...h
             message={m}
             storefront={storefront}
             offersShown={offersShown}
-            stale={m.type === "offers" && m.id !== lastOffersId}
+            stale={m.type === "offers" && (locked || m.id !== lastOffersId)}
             busy={busy}
             {...handlers}
           />
