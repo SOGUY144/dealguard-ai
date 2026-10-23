@@ -1,10 +1,24 @@
 @import "tailwindcss";
-/* ค่าสีและคลาสกระจกมาจากไฟล์ดีไซน์โดยตรง (design/tokens.css) — แก้ที่นั่นที่เดียว */
-@import "../design/tokens.css";
+/* ค่าสีและคลาสกระจกมาจากไฟล์ดีไซน์โดยตรง (design/tokens.css) — แก้ที่นั่นที่เดียว
+   ใส่ไว้ใน layer components เพื่อให้ utility ของ Tailwind (h-10, px-4 ฯลฯ) ทับ .btn-primary ได้
+   ถ้าไม่ใส่ layer CSS ของ tokens จะชนะ utility ทุกตัวเพราะ CSS นอก layer มีลำดับสูงกว่า */
+@import "../design/tokens.css" layer(components);
 
 /* ฟอนต์จาก next/font (ตั้งใน app/layout.tsx) แทนชื่อฟอนต์ใน tokens.css */
 :root {
   --font: var(--font-plex-thai), "Leelawadee UI", Tahoma, sans-serif;
+}
+
+/* bottom sheet รายการสินค้าบนมือถือ (ปิดเองเมื่อ prefers-reduced-motion ด้วย motion-safe:) */
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 /* แปลงจาก design/tailwind.preset.js เป็น Tailwind v4 — อ้างตัวแปรใน tokens.css */

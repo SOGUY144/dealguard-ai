@@ -1,4 +1,4 @@
-import { formatBaht, formatQty } from "./format";
+import { formatBaht, formatQty } from "@/lib/format";
 import type { EscalationKind, MerchantConfig, Product } from "./types";
 
 type Brief = [string, string, string];

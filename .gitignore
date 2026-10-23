@@ -45,3 +45,6 @@ next-env.d.ts
 
 # output of npm run check-keys
 /.check-keys
+
+# บัญชีเดโม/กรรมการที่ npm run db:seed สร้าง (มีรหัสผ่าน)
+/.demo-accounts.local.*

@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "check-keys": "tsx --env-file-if-exists=.env.local scripts/check-keys.ts"
+    "check-keys": "tsx --env-file-if-exists=.env.local scripts/check-keys.ts",
+    "voice-samples": "tsx --env-file-if-exists=.env.local scripts/voice-samples.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
+    "test:db": "node --env-file=.env.local ./node_modules/vitest/vitest.mjs run --config vitest.db.config.mts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.74.0",
@@ -24,11 +28,18 @@
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^24.19.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "jsdom": "^30.1.3",
+    "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",

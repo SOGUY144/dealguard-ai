@@ -111,7 +111,7 @@ C:\dev\dealguard-ai\
 - [x] `.env.example` + `scripts/check-keys.ts` → **ผู้ใช้ใส่คีย์ใน `.env.local` แล้วรัน `npm run check-keys`** (ยังไม่ได้รัน)
 - [x] ติดตั้ง `@supabase/supabase-js @supabase/ssr` และเอา `@upstash/redis` ออก
 - [ ] **ผู้ใช้สร้างโปรเจกต์ Supabase** แล้วใส่ URL / anon key / service role key ใน `.env.local`
-- [ ] ลองฟังเสียงผู้ชายในคลัง ElevenLabs 2–3 เสียงด้วย check-keys แล้วเลือกตัวที่พูดไทยชัดที่สุด
+- [x] ลองฟังเสียงผู้ชายในคลัง ElevenLabs 3 เสียง (`npm run voice-samples -- <id>...`) → ทีมเลือก **Eric - Smooth, Trustworthy** (`cjVigY5qzO86Huf0OWal`) กับโมเดล **`eleven_v4_turbo`** · สร้างเสียง 1 ประโยคราว 1.1–1.4 วินาที
 - **เสร็จเมื่อ:** check-keys ได้คำตอบจาก GPT ได้ไฟล์เสียงไทยที่ฟังรู้เรื่อง และเชื่อมต่อ Supabase ได้
 
 ## เฟส 1 — Deal Engine (MVP ข้อ 1) · ใช้สกิล `test-driven-development`
@@ -125,24 +125,45 @@ C:\dev\dealguard-ai\
 - โค้ดอยู่ที่ `lib/deal-engine/` (39 tests) · ข้อความ "ราคาปกติ" ของข้อเสนอราคาเต็มเป็นคำที่ผมตั้งเอง รอทีมตรวจ
 - **เสร็จเมื่อ:** test ได้ตัวเลขตรงตัวอย่าง SKILL (A +฿20,000 / B ≈ +฿11,332 / C +฿17,000) และไม่มี offer ไหนต่ำกว่า ฿120
 
-## เฟส 2 — UI kit + หน้าแชตลูกค้าแบบ mock (MVP ข้อ 2) · ใช้สกิล `ui-ux-pro-max`
-- [ ] components ตาม HANDOFF §2: AppBackground, GlassCard, Button, StoreHeader, ChatHeader, MessageRow, VoiceBubble, OfferList/OfferCard, ProductCardMessage, OrderSummaryCard, SystemNotice, HandoffCard, Composer, ProductDrawer/ProductSheet
-- [ ] `/` responsive หน้าเดียว (breakpoint 768px): คอมมี drawer ด้านขวา, มือถือใช้ bottom sheet
-- [ ] ป้อน mock `ChatMessage[]` ครบทุก state: start / product / offers / ordered / guard / escalate / no-voice / ตอบแบบข้อความอย่างเดียว
-- [ ] ChatHeader ใช้ "ออนไลน์ · พิมพ์หรือกดไมค์พูดได้" · Composer มีปุ่มไมค์พร้อมสถานะกำลังอัด / กำลังแปลงเสียง
-- [ ] ใช้ copy ไทยตามไฟล์ดีไซน์ ส่วน `[placeholder]` เก็บใน `merchant.json` ห้ามแต่งเอง ห้ามใช้ปุ่มม่วงทึบ
-- **เสร็จเมื่อ:** หน้าตาตรงกับไฟล์ดีไซน์ทั้งที่ 1440 และ 390 px และผ่าน a11y ตาม HANDOFF §7
+## เฟส 2 — UI kit + หน้าแชตลูกค้าแบบ mock (MVP ข้อ 2) · ใช้สกิล `ui-ux-pro-max` ✅
+- [x] components ตาม HANDOFF §2 อยู่ใน `components/chat/`, `components/ui/`, `components/order/` (AppBackground = คลาส `.app-bg` บน body, GlassCard = คลาส `.glass` จาก tokens)
+- [x] `/` responsive หน้าเดียว (breakpoint 768px): คอมมี drawer ด้านขวา, มือถือใช้ bottom sheet (focus ไปปุ่มปิด, Esc ปิด, ข้างหลังเป็น `inert`, ปิดแล้วคืนโฟกัส)
+- [x] ทุก state เปิดดูได้ที่ `/?state=start|product|offers|ordered|text|novoice|guard|escalate` (`lib/chat/scenarios.ts`)
+- [x] ChatHeader ใช้ "ออนไลน์ · พิมพ์หรือกดไมค์พูดได้" · Composer มีปุ่มไมค์ 3 สถานะ (ปกติ / กำลังอัด / กำลังแปลงเสียง)
+- [x] หน้า `/order/[id]` (Mobile-Order) สำหรับออเดอร์เดโม `demo-A|B|C`
+- [x] ตัวตอบจำลอง `lib/chat/mock-responder.ts` ใช้แทน API จนถึงเฟส 4/6 · ข้อเสนอใน mock มี test เช็กว่าตรงกับ Deal Engine จริง
+- [x] ความปลอดภัย: `lib/config/storefront.ts` เป็น server-only ส่งเฉพาะข้อมูลสาธารณะเป็น props · สแกน `.next/static` แล้วไม่มี unitCost/floorPrice
+- [x] `design/tokens.css` import เข้า `layer(components)` เพื่อให้ utility ของ Tailwind ทับขนาดปุ่มได้
+- 124 tests (Vitest + Testing Library) · lint / tsc / build ผ่าน · ตรวจในเบราว์เซอร์ที่ 1440 และ 375 px แล้ว
 
-## เฟส 3 — Supabase: schema, RLS, บัญชีผู้ใช้
-- [ ] `supabase/migrations/`: ตารางทั้งหมด + RLS + trigger สร้าง `profiles` (role = `buyer`) ตอนสมัคร → ผู้ใช้รันใน Supabase SQL Editor หรือ `supabase db push`
-- [ ] seed: ร้าน + สินค้าจาก `merchant.json` · ผู้ใช้สมัครบัญชีเถ้าแก่เองผ่านหน้าเว็บ แล้วรัน SQL ตั้ง role เป็น `owner`
-- [ ] หน้า `/signup` (ชื่อที่ให้ร้านเรียก, อีเมล, รหัสผ่าน, ติ๊กยอมรับนโยบาย), `/login`, `/forgot-password`, `/reset-password`, `/auth/callback`
-- [ ] `proxy.ts`: ยังไม่ล็อกอิน → `/login` (ยกเว้นหน้าในกลุ่ม auth และไฟล์ static) · ล็อกอินแล้ว owner ไป `/owner` buyer ไป `/`
-- [ ] `lib/auth/dal.ts`: ตรวจ session + role ซ้ำในทุก page/route ของ owner (proxy อย่างเดียวไม่พอ) · อ่าน session หลัง `<Suspense>` ตามคู่มือ Cache Components
-- [ ] test ของ RLS: buyer A อ่านแชตของ buyer B ไม่ได้ และ buyer อ่าน `products.unit_cost` ไม่ได้
-- **เสร็จเมื่อ:** สมัคร → ล็อกอิน → ออกจากระบบ → ลืมรหัสผ่าน ทำได้ครบ, buyer เปิด `/owner` แล้วโดนเด้งออก, test ของ RLS ผ่าน
+**ข้อความที่ผมตั้งเอง รอทีมตรวจ:** "กำลังอัดเสียง… กดอีกครั้งเพื่อส่ง", "กำลังแปลงเสียงเป็นข้อความ…", "ไม่พบสินค้า", หัวข้อการ์ดส่งเรื่องตอนกด "คุยกับคนจริง" = "ขอคุยกับคนจริง", ข้อเสนอราคาเต็ม "ราคาปกติ"
+
+**ต่างจากดีไซน์ (ตั้งใจ):**
+- มือถือแสดงเงื่อนไขข้อเสนอแบบยาวเหมือนคอม (เช่น "1,000 ชิ้น · โอนทันที ไม่ใช้เครดิต") เพราะ engine ส่งมาข้อความเดียว ถ้าอยากได้แบบสั้นตามดีไซน์ ต้องเพิ่ม field ข้อความสั้นใน Offer
+- ข้อความเสียงมี transcript เป็นฟองแยกทั้งคอมและมือถือตาม HANDOFF §2 (ดีไซน์มือถือรวมไว้ในหัวการ์ดข้อเสนอ)
+- รายการสินค้าแสดงเฉพาะสินค้าที่มีข้อมูลจริงใน `merchant.json` (ตอนนี้ 1 ตัว) ไม่แสดง placeholder "[สินค้าตัวที่ 3]"
+- "วิธีสั่งซื้อ", "ติดต่อร้าน" และปุ่ม "คุยกับเฮียชัยโดยตรง" ในหน้าออเดอร์ แสดงไว้แต่ยังกดไม่ได้ (รอ copy / เฟส 8)
+
+## เฟส 3 — Supabase: schema, RLS, บัญชีผู้ใช้ ✅
+- [x] `supabase/migrations/20261023000001_init.sql`: 10 ตาราง + RLS ทุกตาราง + GRANT เอง (ปิด auto-expose ไว้) + trigger สร้าง `profiles` (role = `buyer` เสมอ) + Realtime publication — รันด้วย `npm run db:migrate` (ใช้ `SUPABASE_DB_URL` แบบ Session pooler)
+- [x] ตัวเลขหลังบ้านแยกตาราง owner-only: `products`, `dead_stock`, `merchants`, `offer_economics`, `escalations` · ลูกค้าอ่านได้แค่ `chats`/`messages`/`offers`/`orders` ของตัวเอง · เขียนตรงไม่ได้ (ผ่าน server ด้วย service role เท่านั้น)
+- [x] `npm run db:seed`: ร้าน + สินค้าจาก `merchant.json` + 4 บัญชียืนยันแล้ว (เถ้าแก่ทีม, กรรมการเถ้าแก่, กรรมการลูกค้า, คุณนก) · รหัสผ่านอยู่ใน `.demo-accounts.local.md` (git ไม่เก็บ) · รันซ้ำไม่เปลี่ยนรหัส
+- [x] หน้า `/login`, `/signup` (ติ๊กยอมรับนโยบาย), `/forgot-password`, `/reset-password`, `/auth/callback`, `/privacy` (placeholder), `/owner` ชั่วคราว
+- [x] `proxy.ts`: ยังไม่ล็อกอิน → `/login?next=…` (กัน open redirect) · `lib/auth/dal.ts` ตรวจ role ซ้ำทุกหน้า · เถ้าแก่ล็อกอินแล้วไป `/owner`
+- [x] ออกจากระบบด้วยฟอร์ม POST `/auth/logout` (โหลดหน้าใหม่ทั้งหน้า กันแชตคนก่อนค้างในหน่วยความจำ + เช็ก origin)
+- [x] `getCurrentUser` เรียก `connection()` ก่อนอ่าน session — ไม่งั้น Next 16 error "Date.now() while prerendering" (Supabase เทียบวันหมดอายุ token)
+- [x] `npm run test:db`: RLS 14 ข้อบน Supabase จริง (สร้าง/ลบผู้ใช้ชั่วคราวเอง) · unit 152 ข้อ · ตรวจในเบราว์เซอร์: redirect, ล็อกอินลูกค้า/เถ้าแก่, ลูกค้าเข้า /owner ไม่ได้, ออกจากระบบ, รหัสผิด, ฟอร์มสมัครว่าง
+
+- [x] `20261024000002_profile_email.sql`: เก็บอีเมลผู้สมัครใน `profiles` (sync เมื่อเปลี่ยนอีเมล) · เถ้าแก่เห็นอีเมลลูกค้าทุกคน ลูกค้าเห็นแค่ของตัวเอง (RLS 17 ข้อ)
+- [x] **ปิด Confirm email แล้ว (ทีมตัดสินใจ 24 ต.ค. 2569):** ลูกค้าสมัครด้วยอีเมลตัวเองแล้วใช้ได้ทันที — ทดสอบสมัครจริงในเบราว์เซอร์แล้ว (ได้ profile ครบ: ชื่อ, อีเมล, role buyer, เวลายอมรับนโยบาย)
+
+**ข้อจำกัดที่ยังอยู่:** "ลืมรหัสผ่าน" ส่งอีเมลได้เฉพาะสมาชิกทีมในโปรเจกต์ Supabase (อีเมลฟรี) — ลูกค้าทั่วไปจะเห็นข้อความให้ติดต่อร้าน · ไม่เช็กว่าอีเมลเป็นของจริง · ถ้าต้องการให้ลูกค้ารีเซ็ตเองได้ ต่อ Gmail SMTP หรือ Resend ภายหลัง
+
+**ข้อความที่ผมตั้งเอง รอทีมตรวจ:** หน้าสมัคร/ล็อกอิน/ลืมรหัสผ่าน, ข้อความ error ภาษาไทย, โครงหน้า `/privacy` (ข้อกฎหมายยังเป็น `[วงเล็บเหลี่ยม]`)
 
 ## เฟส 4 — Store + API + Layer 1 (MVP ข้อ 3)
+- **โมเดลที่เลือก (วัดจริง 24 ต.ค. 2569):** `OPENAI_MODEL=gpt-4.1-mini` แปลงข้อความไทยเป็น Intent JSON ถูก 4/4 กลางๆ 1.5 วินาที (gpt-4.1-nano / gpt-5.4-nano พลาด 1/4 และช้ากว่า, gpt-5.4-mini ช้าเกินเป้า) · `OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe` (ทดสอบจริงในเฟส 6)
+- ⚠️ **คำขอแรกหลังว่างนาน (cold start) ใช้ 7–13 วินาที** — ต้องมีวิธีอุ่นการเชื่อมต่อ เช่น เรียก GPT เบาๆ ตอนลูกค้าเปิดหน้าแชต หรือตั้ง timeout + ข้อความสำรอง ให้รวมทั้งหมดยังไม่เกิน 10 วินาที
 - [ ] `lib/store`: interface เดียว มี memory impl (test) และ Supabase impl
 - [ ] ชื่อลูกค้ามาจาก `profiles` (ไม่ต้องเดาจาก intent แล้ว)
 - [ ] `ai/intent.ts`: OpenAI Responses API + zod ตาม SKILL §6.3 ค่าที่ดึงไม่ได้เป็น `null` ไม่มี cost/floor ใน prompt ถ้าไม่มีคีย์ใช้ regex parser แทน

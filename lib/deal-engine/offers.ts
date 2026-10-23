@@ -1,4 +1,4 @@
-import { formatQty } from "./format";
+import { formatQty } from "@/lib/format";
 import { computeEconomics, type GiftCost, type RequestBasis } from "./margin";
 import type { MerchantConfig, Offer, PricedOffer, Product } from "./types";
 

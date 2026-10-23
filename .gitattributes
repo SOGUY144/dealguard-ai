@@ -1,0 +1,9 @@
+# เก็บไฟล์ข้อความเป็น LF เสมอ — เครื่องนี้ตั้ง core.autocrlf ไว้ ถ้าไม่บังคับ
+# ไฟล์ .sh ในสกิลจะกลายเป็น CRLF ตอนคนอื่น clone แล้ว bash รันไม่ได้
+* text=auto eol=lf
+
+*.ico binary
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.woff2 binary

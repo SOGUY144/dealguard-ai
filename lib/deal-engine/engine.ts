@@ -1,5 +1,5 @@
 import { buildBrief, type BriefContext } from "./escalation";
-import { formatQty } from "./format";
+import { formatQty } from "@/lib/format";
 import { assertOffersSafe } from "./guard";
 import { computeEconomics } from "./margin";
 import { buildOffers } from "./offers";
