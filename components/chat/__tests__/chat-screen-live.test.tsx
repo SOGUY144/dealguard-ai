@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConnectLive } from "@/components/live/use-live-updates";
 import type { ChatAction, ChatView } from "@/lib/chat/actions";
 import { MOCK_OFFERS } from "@/lib/chat/mock-offers";
 import type { ChatMessage, Storefront } from "@/lib/chat/types";
@@ -51,9 +52,18 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 
-function renderLive(view: ChatView, transport: (a: ChatAction) => Promise<ChatView>) {
+function renderLive(
+  view: ChatView,
+  transport: (a: ChatAction) => Promise<ChatView>,
+  extra: Partial<{ connect: ConnectLive; reload: () => Promise<ChatView> }> = {},
+) {
   return render(
-    <ChatScreen storefront={storefront} products={products} buyerName="คุณนก" live={{ initialView: view, transport }} />,
+    <ChatScreen
+      storefront={storefront}
+      products={products}
+      buyerName="คุณนก"
+      live={{ initialView: view, transport, connect: null, ...extra }}
+    />,
   );
 }
 
@@ -178,4 +188,33 @@ describe("ChatScreen — แชตจริง (ผ่าน API)", () => {
     await act(async () => fireEvent.click(within(drawer).getByRole("button", { name: "ขอต่อราคา" })));
     expect(transport).toHaveBeenCalledWith({ type: "pick_product", sku: "CBL-C-1M" });
   });
+
+  it("เถ้าแก่ตอบในแชต → ลูกค้าเห็นทันทีโดยไม่ต้องรีเฟรช (Realtime แล้วโหลดแชตใหม่)", async () => {
+    let fire: () => void = () => {};
+    const connect: ConnectLive = (onChange, onStatus) => {
+      fire = onChange;
+      onStatus("live");
+      return () => {};
+    };
+    const human: ChatView = { ...initialView, mode: "human" };
+    const withOwner: ChatView = {
+      ...human,
+      messages: [...human.messages, { id: "o1", at, type: "owner_text", text: "ส่งรูปของที่เสียมาได้เลยครับ" }],
+    };
+    const reload = vi.fn(async () => withOwner);
+    renderLive(human, vi.fn(), { connect, reload });
+    vi.useFakeTimers();
+    try {
+      act(() => fire());
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await act(async () => {});
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(within(thread()).getByText("ส่งรูปของที่เสียมาได้เลยครับ")).toBeInTheDocument();
+  });
 });
+

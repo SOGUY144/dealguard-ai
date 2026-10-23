@@ -80,12 +80,14 @@ describe("ProfitChart", () => {
 });
 
 describe("Escalations", () => {
-  it("ประเภท + เวลาไทย + Deal Brief · ปุ่มตอบยังกดไม่ได้จนกว่าจะมีหน้าแชตเถ้าแก่", () => {
+  it("ประเภท + เวลาไทย + Deal Brief · ปุ่มตอบพาไปหน้าแชตของเรื่องนั้น", () => {
     render(<Escalations escalations={escalations} openCount={1} ownerName="เฮียชัย" />);
     expect(screen.getAllByText(/เกินเกณฑ์มูลค่า/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/22:47/).length).toBeGreaterThan(0);
     expect(screen.getByText(/มูลค่าราว ฿6.25 ล้าน/)).toBeInTheDocument();
-    for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+    for (const name of ["ตอบเอง", "ดูแชต", "ตอบ"]) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toMatch(/^\/owner\/chats\/c1(#reply)?$/);
+    }
   });
 
   it("จำนวนจริงมากกว่ารายการที่แสดง → หัวกล่องบอกจำนวนจริง", () => {

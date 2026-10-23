@@ -157,4 +157,29 @@ describe("ChatThread", () => {
     renderScenario("escalate");
     expect(screen.getByText("ส่งเรื่องให้เฮียชัยแล้ว")).toBeInTheDocument();
   });
+
+  it("เถ้าแก่ตอบเอง → ฟองฝั่งร้านพร้อมชื่อเถ้าแก่ (ไม่ใช่ไอคอน AI) และแจ้งเมื่อ AI กลับมาตอบ", () => {
+    const at = "2026-10-24T03:00:00.000Z";
+    render(
+      <ChatThread
+        messages={[
+          { id: "b", at, type: "buyer_text", text: "ของเสีย ขอคืนเงิน", inputMode: "text" },
+          { id: "o1", at, type: "owner_text", text: "ขอรูปของที่เสียหน่อยครับ" },
+          { id: "o2", at, type: "owner_text", text: "เดี๋ยวเฮียโทรกลับครับ" },
+          { id: "s", at, type: "system", kind: "ai_resumed" },
+        ]}
+        storefront={storefront}
+        buyerName="คุณนก"
+        onSelectOffer={vi.fn()}
+        onConfirmOffer={vi.fn()}
+        onOpenProducts={vi.fn()}
+        onShowOffers={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole("group", { name: "ข้อความจากเฮียชัย" });
+    expect(within(row).getByText("ขอรูปของที่เสียหน่อยครับ")).toBeInTheDocument();
+    expect(within(row).getByText("เดี๋ยวเฮียโทรกลับครับ")).toBeInTheDocument();
+    expect(screen.getByText("ผู้ช่วย AI กลับมาตอบแล้ว")).toBeInTheDocument();
+  });
 });
+

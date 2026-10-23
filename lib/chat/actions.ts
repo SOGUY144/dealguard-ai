@@ -22,6 +22,8 @@ export type Suggestion = {
 
 /** สิ่งที่หน้าแชตต้องใช้วาดทั้งหมด */
 export type ChatView = {
+  /** id แชต — หน้าจอใช้ฟังข้อความใหม่ (เถ้าแก่ตอบ) ผ่าน Realtime · ตัวตอบจำลองไม่มี */
+  chatId?: string;
   messages: ChatMessage[];
   suggestions: Suggestion[];
   /** human = ส่งเรื่องให้เถ้าแก่แล้ว AI หยุดตอบ */

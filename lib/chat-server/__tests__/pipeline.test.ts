@@ -52,6 +52,11 @@ describe("loadChat", () => {
     expect((await loadChat(deps, nok)).messages).toHaveLength(1);
   });
 
+  it("บอก id แชตให้หน้าจอใช้ฟังข้อความใหม่ (Realtime)", async () => {
+    const view = await loadChat(deps, nok);
+    expect(view.chatId).toBe(store.chats[0].id);
+  });
+
   it("เปิดซ้ำ → แชตเดิม ไม่ทักซ้ำ", async () => {
     await loadChat(deps, nok);
     const again = await loadChat(deps, nok);

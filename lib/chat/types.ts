@@ -30,6 +30,8 @@ export type ChatMessage = Base &
       }
     | { type: "ai_voice"; audioUrl?: string; durationSec: number; transcript: string }
     | { type: "buyer_text"; text: string; inputMode: "text" | "voice" }
+    /** เถ้าแก่ตอบเองในชื่อร้าน (หลังส่งเรื่องให้เถ้าแก่ / เถ้าแก่รับช่วงต่อ) */
+    | { type: "owner_text"; text: string }
     | { type: "product_card"; sku: string; name: string; listPrice: number }
     | {
         type: "offers";
@@ -41,7 +43,7 @@ export type ChatMessage = Base &
       }
     | { type: "order_summary"; orderId: string; offer: Offer; productName: string }
     | { type: "handoff"; subject: string; orderRef?: string }
-    | { type: "system"; kind: "price_locked" | "voice_unavailable" }
+    | { type: "system"; kind: "price_locked" | "voice_unavailable" | "ai_resumed" }
   );
 
 export type ChatMessageOf<T extends ChatMessage["type"]> = Extract<ChatMessage, { type: T }>;

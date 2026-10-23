@@ -22,7 +22,7 @@ export class MemoryChatStore implements ChatStore {
   }[] = [];
   /** สต๊อกของแถมคงเหลือตาม sku (เริ่มจาก config) */
   readonly giftStock = new Map<string, number>();
-  readonly escalations: { chatId: string; kind: HandoffKind; brief: Brief }[] = [];
+  readonly escalations: { chatId: string; kind: HandoffKind; brief: Brief; status: "open" | "resolved" }[] = [];
   private seq = 0;
   private clock: number;
 
@@ -149,7 +149,16 @@ export class MemoryChatStore implements ChatStore {
   }
 
   async escalate(chatId: string, kind: HandoffKind, brief: Brief) {
-    this.escalations.push({ chatId, kind, brief: [...brief] });
+    this.escalations.push({ chatId, kind, brief: [...brief], status: "open" });
     await this.setMode(chatId, "human");
+  }
+
+  async resolveEscalations(chatId: string) {
+    for (const e of this.escalations) if (e.chatId === chatId) e.status = "resolved";
+  }
+
+  async getChat(chatId: string) {
+    const chat = this.chats.find((c) => c.id === chatId);
+    return chat ? structuredClone(chat) : null;
   }
 }

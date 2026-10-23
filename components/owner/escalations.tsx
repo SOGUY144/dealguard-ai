@@ -1,4 +1,5 @@
 import { AlertCircle } from "lucide-react";
+import Link from "next/link";
 import { buttonClass } from "@/components/ui/button";
 import { formatClock } from "@/lib/format";
 import { escalationLabel, type OwnerEscalation } from "@/lib/owner/summary";
@@ -10,8 +11,7 @@ type Props = {
   ownerName: string;
 };
 
-// ปุ่ม "ตอบเอง" / "ดูแชต" พาไป /owner/chats/[id] ซึ่งทำในเฟส 8 — ตอนนี้ปิดไว้ กันลิงก์ไปหน้าที่ไม่มี
-const PENDING_PHASE_8 = "เปิดแชตได้ในเฟสถัดไป";
+const chatHref = (e: OwnerEscalation) => `/owner/chats/${e.chatId}`;
 
 /** เรื่องที่ AI หยุดตอบและส่งให้เถ้าแก่ (ส้ม = ต้องให้เถ้าแก่ตัดสินเท่านั้น) */
 export function Escalations({ escalations, openCount: count, ownerName }: Props) {
@@ -54,12 +54,13 @@ export function Escalations({ escalations, openCount: count, ownerName }: Props)
                 </div>
                 <p className="text-sm leading-[1.6]">{e.brief.join(" · ")}</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" disabled title={PENDING_PHASE_8} className={buttonClass("primary", "h-[42px] min-h-0 text-sm")}>
+                  {/* ตอบเอง = ไปที่ช่องพิมพ์เลย · ดูแชต = เปิดดูประวัติก่อน (หน้าเดียวกัน) */}
+                  <Link href={`${chatHref(e)}#reply`} aria-label="ตอบเอง" className={buttonClass("primary", "h-[42px] min-h-0 text-sm")}>
                     ตอบเอง
-                  </button>
-                  <button type="button" disabled title={PENDING_PHASE_8} className={buttonClass("secondary", "h-[42px] min-h-0 text-sm font-medium")}>
+                  </Link>
+                  <Link href={chatHref(e)} className={buttonClass("secondary", "h-[42px] min-h-0 text-sm font-medium")}>
                     ดูแชต
-                  </button>
+                  </Link>
                 </div>
               </li>
             ))}
@@ -77,9 +78,9 @@ export function Escalations({ escalations, openCount: count, ownerName }: Props)
                   </span>
                   <span className="text-sm leading-[1.5]">{e.brief[0]}</span>
                 </div>
-                <button type="button" disabled title={PENDING_PHASE_8} className={buttonClass("primary", "h-10 min-h-0 px-4 text-[13px]")}>
+                <Link href={`${chatHref(e)}#reply`} className={buttonClass("primary", "h-10 min-h-0 px-4 text-[13px]")}>
                   ตอบ
-                </button>
+                </Link>
               </li>
             ))}
           </ul>

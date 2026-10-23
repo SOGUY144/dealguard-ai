@@ -33,7 +33,8 @@ function toChat(row: Row): StoredChat {
   };
 }
 
-function toMessage(row: Row): ChatMessage {
+/** แถวในตาราง messages → ChatMessage */
+export function toMessage(row: Row): ChatMessage {
   return {
     ...(row.body as object),
     id: String(row.id),
@@ -223,6 +224,21 @@ export class SupabaseChatStore implements ChatStore {
       letter: offer.letter as Offer["id"],
       createdAt: new Date(String(row.created_at)).toISOString(),
     };
+  }
+
+  async getChat(chatId: string) {
+    const row = must<Row | null>(
+      "อ่านแชต",
+      await this.db.from("chats").select(CHAT_COLUMNS).eq("id", chatId).maybeSingle(),
+    );
+    return row ? toChat(row) : null;
+  }
+
+  async resolveEscalations(chatId: string) {
+    must(
+      "ปิดเรื่อง",
+      await this.db.from("escalations").update({ status: "resolved" }).eq("chat_id", chatId).eq("status", "open"),
+    );
   }
 
   async setMode(chatId: string, mode: StoredChat["mode"]) {

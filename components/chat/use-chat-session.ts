@@ -1,14 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ChatAction, ChatView } from "@/lib/chat/actions";
 import { mergeServerView, selectOffer, withPendingBuyerText, withSendError } from "@/lib/chat/live-view";
 import { initialChatState, mockRespond, type MockContext } from "@/lib/chat/mock-responder";
 import { buildScenario, type ScenarioName } from "@/lib/chat/scenarios";
-import { fetchChatTransport, UnauthorizedError, type ChatTransport } from "@/lib/chat/transport";
+import { fetchChatTransport, fetchChatView, UnauthorizedError, type ChatTransport } from "@/lib/chat/transport";
+import { connectChat } from "@/lib/supabase/live";
+import { type ConnectLive, useLiveUpdates } from "@/components/live/use-live-updates";
 
-export type LiveChat = { initialView: ChatView; transport?: ChatTransport };
+export type LiveChat = {
+  initialView: ChatView;
+  transport?: ChatTransport;
+  /** ฟังข้อความใหม่ของแชตนี้ (ไม่ใส่ = Realtime ของ Supabase · null = ไม่ฟัง เช่นใน test) */
+  connect?: ConnectLive | null;
+  reload?: () => Promise<ChatView>;
+};
 
 type Options = {
   /** มี = แชตจริงผ่าน API · ไม่มี = ตัวตอบจำลอง (ตรวจหน้าตา / test) */
@@ -33,6 +41,19 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
   const router = useRouter();
 
   const view: ChatView = live && liveView ? liveView : mock!;
+
+  // เถ้าแก่ตอบ / ให้ AI ตอบต่อ → ลูกค้าเห็นเองโดยไม่ต้องรีเฟรช
+  const chatId = live?.initialView.chatId;
+  const connect = useMemo(
+    () => (live === undefined ? null : live.connect !== undefined ? live.connect : chatId ? connectChat(chatId) : null),
+    [live, chatId],
+  );
+  const reload = live?.reload ?? fetchChatView;
+  useLiveUpdates(connect, () => {
+    // กำลังรอคำตอบของตัวเองอยู่ — คำตอบนั้นจะพาข้อความล่าสุดมาเอง
+    if (inFlight.current) return;
+    reload().then((next) => setLiveView((v) => (v ? mergeServerView(v, next) : next)), () => {});
+  });
 
   async function dispatch(action: ChatAction): Promise<boolean> {
     if (!live) {

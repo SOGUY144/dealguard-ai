@@ -1,0 +1,332 @@
+"use client";
+
+import { ArrowLeft, ArrowRight, CircleCheck, LoaderCircle, Mic, Sparkles, User } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { type ConnectLive, useLiveUpdates } from "@/components/live/use-live-updates";
+import { buttonClass } from "@/components/ui/button";
+import type { ChatMessage } from "@/lib/chat/types";
+import { cn } from "@/lib/cn";
+import { formatBaht, formatClock, formatDayLabel, formatQty } from "@/lib/format";
+import { quickReplies, type OwnerChatView } from "@/lib/owner/chat-view";
+import { escalationLabel, ownerInitials } from "@/lib/owner/summary";
+import { LiveStatusNote } from "./owner-live";
+
+export type OwnerChatAction = { type: "reply"; text: string } | { type: "resolve" } | { type: "handback" };
+
+export type OwnerChatTransport = {
+  act: (action: OwnerChatAction) => Promise<OwnerChatView>;
+  load: () => Promise<OwnerChatView>;
+};
+
+type Props = {
+  initial: OwnerChatView;
+  ownerName: string;
+  transport: OwnerChatTransport;
+  /** Realtime ของแชตนี้ (test ใส่ null) */
+  connect: ConnectLive | null;
+};
+
+/** หน้าแชตเถ้าแก่ (Owner-Chat): ลูกค้าซ้าย · AI/เถ้าแก่ขวา · สรุปจาก AI · ตอบในชื่อเถ้าแก่ · ให้ AI ตอบต่อ */
+export function OwnerChatScreen({ initial, ownerName, transport, connect }: Props) {
+  const [view, setView] = useState(initial);
+  const [pending, setPending] = useState<OwnerChatAction["type"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  // มาจากปุ่ม "ตอบเอง" (#reply) → พร้อมพิมพ์ทันที
+  useEffect(() => {
+    if (window.location.hash === "#reply") inputRef.current?.focus();
+  }, []);
+
+  const reload = useCallback(() => {
+    transport.load().then(setView, () => {});
+  }, [transport]);
+  const live = useLiveUpdates(connect, reload);
+
+  async function act(action: OwnerChatAction): Promise<boolean> {
+    if (pending) return false;
+    setPending(action.type);
+    setError(null);
+    try {
+      setView(await transport.act(action));
+      return true;
+    } catch {
+      setError("ส่งไม่สำเร็จ ลองอีกครั้ง");
+      return false;
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const value = text.trim();
+    if (!value) return;
+    setText("");
+    if (!(await act({ type: "reply", text: value }))) setText((current) => current || value);
+  }
+
+  const esc = view.escalation;
+  const subtitle = esc ? `ลูกค้า · ${escalationLabel(esc.kind)}` : "ลูกค้า";
+  const chips = useMemo(() => quickReplies(esc?.kind ?? null), [esc?.kind]);
+  const humanMode = view.mode === "human";
+
+  return (
+    <div className="mx-auto flex h-dvh w-full max-w-[760px] flex-col">
+      <header className="glass-pill mx-3 mt-3 flex shrink-0 items-center gap-2.5 py-2 pr-3 pl-2">
+        <Link href="/owner" aria-label="กลับไปหน้าภาพรวม" className={buttonClass("white", "size-11 shrink-0 p-0")}>
+          <ArrowLeft aria-hidden="true" size={19} />
+        </Link>
+        <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#EEF1FB] text-[#4A4C63]">
+          <User size={19} />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h1 className="truncate text-[15px] leading-[1.4] font-semibold">{view.buyerName}</h1>
+          <span className="text-xs text-muted">{subtitle}</span>
+        </div>
+      </header>
+
+      {esc && (
+        <section
+          aria-label="สรุปจาก AI"
+          className="mx-3 mt-2.5 flex shrink-0 flex-col gap-1.5 rounded-[20px] border border-white/95 bg-white/72 px-3.5 py-3 shadow-[0_8px_22px_rgba(110,90,170,0.08)]"
+        >
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-accent-ink">
+            <Sparkles aria-hidden="true" size={14} />
+            สรุปจาก AI
+          </span>
+          <ol className="flex list-decimal flex-col gap-0.5 pl-[18px] text-[13px] leading-[1.55]">
+            {esc.brief.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ol>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            {esc.status === "open" ? (
+              <>
+                <span className="text-xs font-semibold text-warn-ink">รอตัดสิน</span>
+                <button
+                  type="button"
+                  onClick={() => void act({ type: "resolve" })}
+                  disabled={pending !== null}
+                  className={buttonClass("secondary", "h-10 min-h-0 px-3.5 text-[13px] font-medium")}
+                >
+                  <CircleCheck aria-hidden="true" size={15} />
+                  ปิดเรื่องนี้
+                </button>
+              </>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs text-ok-ink">
+                <CircleCheck aria-hidden="true" size={14} />
+                ปิดเรื่องแล้ว
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* column-reverse: เริ่มชิดล่างและค้างอยู่ที่ข้อความล่าสุด */}
+      <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain">
+        <div role="log" aria-live="polite" aria-label="ข้อความในแชต" className="flex flex-col gap-3 px-3.5 pt-3.5 pb-2">
+          {view.messages[0] && (
+            <span className="self-center rounded-full bg-white/90 px-3 py-1 text-xs text-muted">
+              {formatDayLabel(view.messages[0].at, new Date())} · {formatClock(view.messages[0].at)}
+            </span>
+          )}
+          {view.messages.map((m) => (
+            <OwnerViewMessage key={m.id} message={m} buyerName={view.buyerName} ownerName={ownerName} />
+          ))}
+          {humanMode && (
+            <span className="inline-flex items-center gap-1.5 self-center rounded-full border border-[#EFEAF8] bg-white/85 px-3 py-[5px] text-xs text-[#4A4C63]">
+              <span aria-hidden="true" className="size-[7px] rounded-full bg-accent" />
+              AI หยุดตอบแชตนี้ · คุณตอบลูกค้าเอง
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 flex-col gap-2 px-3 pt-1.5 pb-4">
+        <LiveStatusNote status={live} />
+        {error && (
+          <p role="alert" className="px-1 text-xs text-warn-ink">
+            {error}
+          </p>
+        )}
+        <div className="flex gap-2 overflow-x-auto">
+          {chips.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              disabled={pending !== null}
+              onClick={() => void act({ type: "reply", text: chip })}
+              className={buttonClass("chip", "min-h-10 shrink-0 text-[13px] font-medium")}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+        <form
+          id="reply"
+          onSubmit={submit}
+          className="flex flex-col gap-1 rounded-[22px] border-[1.5px] border-accent-border bg-white py-2 pr-2 pl-3.5 shadow-soft"
+        >
+          <span className="text-xs font-semibold text-accent-ink">ตอบในชื่อ{ownerName}</span>
+          <label htmlFor={inputId} className="sr-only">
+            พิมพ์ตอบ{view.buyerName}
+          </label>
+          <input
+            ref={inputRef}
+            id={inputId}
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={`พิมพ์ตอบ${view.buyerName}...`}
+            autoComplete="off"
+            enterKeyHint="send"
+            className="h-[34px] w-full bg-transparent text-sm outline-none placeholder:text-muted"
+          />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => void act({ type: "handback" })}
+              disabled={!humanMode || pending !== null}
+              className={buttonClass("secondary", "h-10 min-h-0 px-3 text-[13px] font-medium")}
+            >
+              {pending === "handback" ? (
+                <LoaderCircle aria-hidden="true" size={15} className="motion-safe:animate-spin" />
+              ) : (
+                <Sparkles aria-hidden="true" size={15} />
+              )}
+              ให้ AI ตอบต่อ
+            </button>
+            {/* เสียงของเถ้าแก่ไม่อยู่ใน MVP (ใช้เสียง AI) — แสดงตามดีไซน์แต่กดไม่ได้ */}
+            <button type="button" disabled aria-label="พูดด้วยเสียง (ยังไม่เปิดใช้)" className={buttonClass("ghost", "size-11 p-0")}>
+              <Mic aria-hidden="true" size={19} />
+            </button>
+            <span className="flex-1" />
+            <button
+              type="submit"
+              aria-label="ส่งข้อความ"
+              disabled={pending !== null}
+              className={buttonClass("primary", "size-11 min-h-0 p-0")}
+            >
+              {pending === "reply" ? (
+                <LoaderCircle aria-hidden="true" size={17} className="motion-safe:animate-spin" />
+              ) : (
+                <ArrowRight aria-hidden="true" size={17} strokeWidth={2.2} />
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/** ข้อความหนึ่งรายการในมุมของเถ้าแก่ — ลูกค้าซ้าย (ไอคอนคน) · ร้านขวา (AI = ประกาย, เถ้าแก่ = อักษรย่อ) */
+function OwnerViewMessage({ message: m, buyerName, ownerName }: { message: ChatMessage; buyerName: string; ownerName: string }) {
+  const time = formatClock(m.at);
+  switch (m.type) {
+    case "buyer_text":
+    case "product_card":
+      return (
+        <div className="flex max-w-[86%] items-end gap-2">
+          <span aria-hidden="true" className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-[#EEF1FB] text-[#4A4C63]">
+            <User size={15} />
+          </span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted">
+              {buyerName} · {time}
+              {m.type === "buyer_text" && m.inputMode === "voice" ? " · พูด" : ""}
+            </span>
+            <div className="rounded-[18px_18px_18px_6px] border border-line-soft bg-white px-3 py-2.5 text-sm leading-[1.55]">
+              {m.type === "buyer_text" ? m.text : `เลือกสินค้า ${m.name} · ${formatBaht(m.listPrice)}/ชิ้น`}
+            </div>
+          </div>
+        </div>
+      );
+    case "ai_text":
+    case "ai_voice":
+    case "offers":
+    case "order_summary":
+      return (
+        <StoreSide who="ai" label={`${time} · ผู้ช่วย AI`}>
+          {m.type === "ai_text"
+            ? m.text
+            : m.type === "ai_voice"
+              ? m.transcript
+              : m.type === "offers"
+                ? <OffersSummary message={m} />
+                : `ออเดอร์ ${m.offer.id} · ${m.offer.label} · ${formatBaht(m.offer.pricePerUnit)} × ${formatQty(m.offer.qty)} = ${formatBaht(m.offer.total)}`}
+        </StoreSide>
+      );
+    case "owner_text":
+      return (
+        <StoreSide who="owner" label={`${time} · ${ownerName} (คุณ)`} initials={ownerInitials(ownerName)}>
+          {m.text}
+        </StoreSide>
+      );
+    case "handoff":
+      return (
+        <span className="inline-flex items-center gap-1.5 self-center rounded-full border border-[#EFEAF8] bg-white/85 px-3 py-[5px] text-xs text-[#4A4C63]">
+          <span aria-hidden="true" className="size-[7px] rounded-full bg-accent" />
+          AI ส่งเรื่องนี้ให้คุณ · {m.subject}
+        </span>
+      );
+    case "system":
+      if (m.kind === "voice_unavailable") return null;
+      return (
+        <span className="self-center rounded-full border border-[#EFEAF8] bg-white/85 px-3 py-[5px] text-xs text-[#4A4C63]">
+          {m.kind === "ai_resumed" ? "คุณให้ AI ตอบต่อแล้ว" : "ราคาล็อกโดยระบบของร้าน"}
+        </span>
+      );
+  }
+}
+
+function StoreSide({
+  who,
+  label,
+  initials,
+  children,
+}: {
+  who: "ai" | "owner";
+  label: string;
+  initials?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex max-w-[86%] items-end gap-2 self-end">
+      <div className="flex flex-col items-end gap-1">
+        <span className="text-xs text-muted">{label}</span>
+        <div
+          className={cn(
+            "rounded-[18px_18px_6px_18px] px-3 py-2.5 text-sm leading-[1.55]",
+            who === "ai" ? "bg-accent-tint" : "border border-accent-border bg-white",
+          )}
+        >
+          {children}
+        </div>
+      </div>
+      <span
+        aria-hidden="true"
+        className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-accent-tint text-[11px] font-semibold text-accent"
+      >
+        {who === "ai" ? <Sparkles size={15} /> : initials}
+      </span>
+    </div>
+  );
+}
+
+function OffersSummary({ message }: { message: Extract<ChatMessage, { type: "offers" }> }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span>เสนอ {message.offers.length} ทาง{message.confirmed && message.selectedId ? ` · ลูกค้ายืนยันข้อ ${message.selectedId}` : ""}</span>
+      {message.offers.map((o) => (
+        <span key={o.id} className="text-[13px] text-ink-2">
+          {o.id} {o.label} · {formatBaht(o.pricePerUnit)} × {formatQty(o.qty)} = {formatBaht(o.total)}
+        </span>
+      ))}
+    </span>
+  );
+}

@@ -92,7 +92,7 @@ function view(
   extra: Pick<ChatView, "focus" | "notice"> = {},
   now = new Date(),
 ): ChatView {
-  return { messages, mode: chat.mode, suggestions: deriveSuggestions(messages, chat.mode, now), ...extra };
+  return { chatId: chat.id, messages, mode: chat.mode, suggestions: deriveSuggestions(messages, chat.mode, now), ...extra };
 }
 
 const clock = (deps: PipelineDeps) => (deps.now ?? (() => new Date()))();

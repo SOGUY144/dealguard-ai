@@ -4,6 +4,7 @@ import { groupMessages, type MessageRow } from "@/lib/chat/group";
 import type { ChatMessage, Offer, Storefront } from "@/lib/chat/types";
 import { cn } from "@/lib/cn";
 import { formatClock, formatDayLabel } from "@/lib/format";
+import { ownerInitials } from "@/lib/owner/summary";
 import { AiAvatar } from "@/components/ui/ai-avatar";
 import { buttonClass } from "@/components/ui/button";
 import { AiBubble, AiBubbleWithProductsCta, BuyerBubble, ProductCardMessage } from "./bubbles";
@@ -133,6 +134,26 @@ function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, lock
         ) : first.type === "buyer_text" ? (
           <BuyerBubble text={first.text} viaVoice={first.inputMode === "voice"} />
         ) : null}
+      </div>
+    );
+  }
+
+  if (row.kind === "owner") {
+    // เถ้าแก่ตอบเอง: ฝั่งร้านเหมือน AI แต่ avatar เป็นอักษรย่อชื่อ — ลูกค้าต้องแยกออกว่าคนจริงตอบ (ไม่มีในไฟล์ดีไซน์)
+    return (
+      <div role="group" aria-label={`ข้อความจาก${storefront.ownerName}`} className="flex items-start gap-2 md:gap-2.5">
+        <span
+          aria-hidden="true"
+          className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-accent-tint text-[11px] font-semibold text-accent-ink md:size-[34px] md:text-xs"
+        >
+          {ownerInitials(storefront.ownerName)}
+        </span>
+        <div className="flex max-w-[86%] min-w-0 flex-col gap-2 md:max-w-[78%]">
+          <span className="text-xs text-muted md:text-[13px]">
+            <span className="font-semibold text-ink">{storefront.ownerName}</span> · {formatClock(first.at)}
+          </span>
+          {row.messages.map((m) => (m.type === "owner_text" ? <AiBubble key={m.id}>{m.text}</AiBubble> : null))}
+        </div>
       </div>
     );
   }

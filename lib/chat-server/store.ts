@@ -18,6 +18,8 @@ export interface ChatStore {
   loadConfig(): Promise<MerchantConfig>;
   /** แชตล่าสุดของลูกค้าคนนี้ */
   findChat(buyerId: string): Promise<StoredChat | null>;
+  /** แชตตาม id (หน้าเถ้าแก่) */
+  getChat(chatId: string): Promise<StoredChat | null>;
   /**
    * สร้างแชตพร้อมข้อความทักทาย — ลูกค้า 1 คนมีแชตเดียว (unique ในฐานข้อมูล)
    * ถ้ามีอยู่แล้ว (เช่น เปิดสองแท็บพร้อมกัน) คืนแชตเดิมโดยไม่ทักซ้ำ
@@ -57,4 +59,6 @@ export interface ChatStore {
   }): Promise<{ orderId: string } | null>;
   /** ส่งเรื่องให้เถ้าแก่ + เปลี่ยนแชตเป็นโหมด human ในคำสั่งเดียว (ห้ามเกิดครึ่งเดียว) */
   escalate(chatId: string, kind: HandoffKind, brief: Brief): Promise<void>;
+  /** ปิดเรื่องที่ยังเปิดอยู่ทั้งหมดของแชตนี้ (เถ้าแก่จัดการแล้ว) */
+  resolveEscalations(chatId: string): Promise<void>;
 }
