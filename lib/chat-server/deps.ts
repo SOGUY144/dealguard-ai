@@ -1,6 +1,6 @@
 // ประกอบ pipeline ของจริง: Supabase (service role) + GPT (ถ้ามีคีย์) — สร้างใหม่ทุก request
 import "server-only";
-import { createIntentLlm, createReplyWriter } from "@/lib/ai/openai";
+import { createChatWriter, createIntentLlm, createReplyWriter } from "@/lib/ai/openai";
 import { storefront } from "@/lib/config/storefront";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSpeaker } from "@/lib/voice/elevenlabs";
@@ -13,6 +13,7 @@ export function createChatDeps(): PipelineDeps {
     storefront,
     intentLlm: createIntentLlm(),
     replyWriter: createReplyWriter(),
+    chatWriter: createChatWriter(),
     speaker: createSpeaker(),
   };
 }

@@ -13,6 +13,7 @@
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
     "demo:reset": "tsx --env-file-if-exists=.env.local scripts/reset-demo.ts",
+    "eval:chat": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/eval-chat.ts",
     "test:db": "node --env-file=.env.local ./node_modules/vitest/vitest.mjs run --config vitest.db.config.mts"
   },
   "dependencies": {

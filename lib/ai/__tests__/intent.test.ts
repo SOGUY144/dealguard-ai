@@ -12,6 +12,8 @@ const llmOutput = (over: Partial<LlmIntentOutput> = {}): LlmIntentOutput => ({
   payment_terms_requested_days: null,
   competitor_price: 110,
   injection_suspected: false,
+  budget_total: null,
+  frustrated: false,
   ...over,
 });
 
@@ -118,5 +120,43 @@ describe("รีวิวรอบ 3 — กฎของเรากันไว
     const llm = fakeLlm(async () => llmOutput({ requested_price: 10, competitor_price: null }));
     expect((await parseIntent("ลด 10 บาทได้ไหม 1000 ชิ้น", ctx, llm)).intent.requestedPrice).toBeNull();
     expect((await parseIntent("ขอ 10% ได้ไหม 1000 ชิ้น", ctx, llm)).intent.requestedPrice).toBeNull();
+  });
+});
+
+describe("parseIntent — งบรวม / หงุดหงิด / ถามราคา (แชตจริงคุณนก 25 ต.ค. 2569)", () => {
+  const none = { requested_price: null, quantity: null, competitor_price: null };
+
+  it("GPT บอกงบรวม → budgetTotal · ตัวเลขเดียวกันที่ใส่มาเป็นราคาที่ขอ ไม่ใช่ราคาต่อชิ้น", async () => {
+    const llm = fakeLlm(async () => llmOutput({ ...none, requested_price: 320, budget_total: 320 }));
+    const { intent } = await parseIntent("320 บาทได้กี่เส้น", ctx, llm);
+    expect(intent).toMatchObject({ budgetTotal: 320, requestedPrice: null });
+  });
+
+  it("GPT หรือกฎของเราเห็นว่าลูกค้าหงุดหงิด → frustrated", async () => {
+    const byLlm = await parseIntent("ช่วยตั้งใจหน่อย", ctx, fakeLlm(async () => llmOutput({ ...none, intent: "other", frustrated: true })));
+    expect(byLlm.intent.frustrated).toBe(true);
+    const byRule = await parseIntent("คุยไม่รู้เรื่องเลยว่ะ", ctx, fakeLlm(async () => llmOutput({ ...none, intent: "other" })));
+    expect(byRule.intent.frustrated).toBe(true);
+  });
+
+  it("GPT จัดคำถามเรื่องราคาเป็น ask_info → ถือเป็นการถามราคา (ไม่ตอบว่า 'ตอบไม่ได้')", async () => {
+    const llm = fakeLlm(async () => llmOutput({ ...none, intent: "ask_info" }));
+    expect((await parseIntent("มีราคาอื่นไหม", ctx, llm)).intent.intent).toBe("negotiate_price");
+    // ถามต้นทุนยังเป็นคำถามข้อมูล (ตอบว่าเป็นความลับของร้าน)
+    expect((await parseIntent("ต้นทุนเท่าไหร่", ctx, llm)).intent.intent).toBe("ask_info");
+  });
+
+  it("GPT รุ่นเก่าที่ยังไม่ส่งช่องใหม่มา → ยังอ่านได้ ไม่ตกไปใช้ตัวสำรอง", async () => {
+    const { budget_total: _b, frustrated: _f, ...old } = llmOutput();
+    void _b;
+    void _f;
+    expect((await parseIntent("ขอ 125 ได้ไหม 1000 ชิ้น", ctx, fakeLlm(async () => old))).source).toBe("llm");
+  });
+
+  it("ต่อราคาซ้ำๆ ไม่ใช่หงุดหงิด — GPT ติดธงมาเอง แต่ข้อความไม่มีคำบ่น → ไม่นับ (ไม่ขอโทษแทนที่จะตอบเรื่องราคา)", async () => {
+    const llm = fakeLlm(async () => llmOutput({ ...none, intent: "negotiate_price", frustrated: true }));
+    expect((await parseIntent("ลดอีกๆๆ", ctx, llm)).intent.frustrated).toBeUndefined();
+    // บ่นชัดๆ ยังนับ แม้กำลังต่อราคา
+    expect((await parseIntent("ลดหน่อยดิ คุยไม่รู้เรื่องเลยว่ะ", ctx, llm)).intent.frustrated).toBe(true);
   });
 });

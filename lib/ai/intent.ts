@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { PublicProduct } from "@/lib/chat/types";
 import type { Intent } from "@/lib/deal-engine/types";
-import { fallbackIntent } from "./fallback-intent";
+import { fallbackIntent, PRICE_QUESTION } from "./fallback-intent";
 
 /** รูปแบบที่ GPT ต้องตอบ (snake_case ตาม SKILL §6.3) — ค่าที่ไม่รู้ต้องเป็น null ห้ามเดา */
 export const llmIntentSchema = z.object({
@@ -14,8 +14,14 @@ export const llmIntentSchema = z.object({
   payment_terms_requested_days: z.number().int().min(0).nullable(),
   competitor_price: z.number().positive().nullable(),
   injection_suspected: z.boolean(),
+  /** งบรวมที่ลูกค้าบอก ("320 บาทได้กี่เส้น") */
+  budget_total: z.number().positive().nullable(),
+  /** ลูกค้าหงุดหงิด/บ่นว่าตอบไม่ดี */
+  frustrated: z.boolean(),
 });
 export type LlmIntentOutput = z.infer<typeof llmIntentSchema>;
+/** ช่องที่เพิ่มทีหลังอาจไม่มี (โมเดล/ตัวทดสอบเก่า) — ไม่มีไม่ใช่เหตุให้ทิ้งผลของ GPT */
+const llmIntentReader = llmIntentSchema.partial({ budget_total: true, frustrated: true });
 
 export type IntentLlmInput = {
   text: string;
@@ -34,6 +40,8 @@ export type ParsedIntent = { source: "llm" | "fallback"; intent: Intent };
 export type IntentParseContext = { products: PublicProduct[]; lastSku: string | null; history: string[] };
 
 const DEFAULT_TIMEOUT_MS = 4000;
+/** ถามต้นทุน = คำถามข้อมูล (ตอบว่าเป็นความลับ) ไม่ใช่ถามราคา */
+const ASKS_COST = /ต้นทุน|ทุนเท่า|ราคาทุน|ราคาพื้น|กำไร/;
 /** คำที่บอกว่าลูกค้าขอราคานั้นเอง ไม่ใช่แค่เล่าราคาร้านอื่น */
 const ASKS_FOR_PRICE = /ขอ|ได้ไหม|ได้มั้ย|ได้ป่าว|ได้รึเปล่า|เหลือ|ลดเป็น/;
 
@@ -59,10 +67,11 @@ export async function parseIntent(
       llm.extract({ text, history: ctx.history, products: ctx.products.map(({ sku, name }) => ({ sku, name })) }),
       timeoutMs,
     );
-    const out = llmIntentSchema.parse(raw);
+    const out = llmIntentReader.parse(raw);
     const known = ctx.products.some((p) => p.sku === out.sku);
     // "ลด 10 บาท" / "ขอ 10%" คือส่วนลดที่ขอ ไม่ใช่ราคาต่อชิ้น — GPT ใส่มาเป็น requested_price ได้
     const asked = out.requested_price;
+    const budget = out.budget_total ?? fallback.budgetTotal ?? null;
     const discountOnly =
       asked !== null &&
       (new RegExp(String.raw`ลด(?:ให้)?\s*${asked}(?![\d.])`).test(text) ||
@@ -71,12 +80,21 @@ export async function parseIntent(
       source: "llm",
       intent: {
         // คืนเงิน/ร้องเรียนต้องถึงเถ้าแก่เสมอ — GPT อ่านพลาดเป็นต่อราคา กฎของเรายังจับได้
-        intent: fallback.intent === "refund" || fallback.intent === "complaint" ? fallback.intent : out.intent,
+        // ถามเรื่องราคา ("มีราคาอื่นไหม") ที่ GPT จัดเป็นคำถามข้อมูล → ถามราคา (แชตจริงเคยตอบว่า "ผู้ช่วยยังตอบไม่ได้")
+        intent:
+          fallback.intent === "refund" || fallback.intent === "complaint"
+            ? fallback.intent
+            : out.intent === "ask_info" && PRICE_QUESTION.test(text) && !ASKS_COST.test(text)
+              ? "negotiate_price"
+              : out.intent,
         sku: known ? out.sku : ctx.lastSku,
         // GPT ชอบเอาราคาคู่แข่งมาใส่เป็นราคาที่ขอ ("ร้านข้างๆ ให้ 110") — เท่ากันพอดีและไม่มีคำขอ = แค่อ้างราคาร้านอื่น
         // ("ร้านอื่นให้ 100 ขอ 100 ได้ไหม" ยังเป็นการขอราคา — ตัวนับต่ำกว่าพื้นต้องทำงาน)
+        // งบรวมไม่ใช่ราคาต่อชิ้น ("320 บาทได้กี่เส้น" → GPT อาจใส่ 320 มาทั้งสองช่อง)
         requestedPrice:
-          discountOnly || (out.requested_price !== null && out.requested_price === out.competitor_price && !ASKS_FOR_PRICE.test(text))
+          discountOnly ||
+          (budget !== null && out.requested_price === budget) ||
+          (out.requested_price !== null && out.requested_price === out.competitor_price && !ASKS_FOR_PRICE.test(text))
             ? null
             : out.requested_price,
         quantity: out.quantity,
@@ -85,6 +103,11 @@ export async function parseIntent(
         buyerName: null,
         // ด่านสองชั้น: GPT หรือกฎของเราจับได้ก็พอ
         injectionSuspected: out.injection_suspected || fallback.injectionSuspected,
+        ...(budget !== null && { budgetTotal: budget }),
+        // ต่อราคาซ้ำๆ ("ลดอีกๆๆ") GPT มักติดธงหงุดหงิด → ตอนต่อราคาเชื่อเฉพาะคำบ่นในข้อความจริง (ไม่งั้นได้คำขอโทษแทนเรื่องราคา)
+        ...((fallback.frustrated || (out.frustrated && out.intent !== "negotiate_price" && out.intent !== "order")) && {
+          frustrated: true,
+        }),
       },
     };
   } catch (err) {

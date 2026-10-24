@@ -185,3 +185,51 @@ export function validateDraft(draft: ReplyDraft, facts: ReplyFacts): Validation 
   ];
   return checks.find((c) => !c.ok) ?? { ok: true };
 }
+
+// ───────────────────────── ข้อความทั่วไป (ไม่ใช่การ์ดข้อเสนอ) ─────────────────────────
+
+/** สิ่งที่ข้อความทั่วไปพูดได้ — ระบบสร้างจากข้อมูลจริง (ตัวเลขทุกตัวต้องอยู่ใน numbers) */
+export type ChatTextFacts = {
+  /** ตัวเลขที่พูดได้ (ราคา จำนวน ยอดรวม เครดิต) */
+  numbers: number[];
+  /** ตัวอักษรข้อเสนอที่อ้างได้ (ข้อที่อยู่ในการ์ดจริง) */
+  letters: Offer["id"][];
+  /** ชื่อสินค้า/ของแถม — ตัวเลขในชื่อ ("1 เมตร", "20W") ไม่ใช่ราคา */
+  names: string[];
+  /** ตัวเลขที่ต้องพูดถึง (ข้อมูลสำคัญของคำตอบนี้) — GPT ชอบตัดทิ้งแล้วพูดลอยๆ ("มีราคาเดียวครับ") */
+  required?: number[];
+  /** คำที่ต้องมี (แต่ละข้อ = ทางเลือกคั่นด้วย |) เช่น ขอโทษ|ขออภัย ตอนลูกค้าหงุดหงิด */
+  requiredWords?: string[];
+};
+
+// คำที่ห้ามในข้อความทั่วไป = ห้ามสัญญา/ข้อมูลหลังบ้านแบบเดียวกับการ์ด แต่ "ลดเพิ่มไม่ได้" (ปฏิเสธ) พูดได้
+const FORBIDDEN_CHAT =
+  /ประกัน|การันตี|warranty|guarantee|ฟรี|free|ค่าส่ง|ขนส่ง|จัดส่ง|ส่งให้|ส่งถึง|ส่งภายใน|ส่งด่วน|ส่งไว|ไม่คิดค่า|เปลี่ยนสินค้า|เปลี่ยนคืน|คืนสินค้า|รับคืน|คืนเงิน|เงินคืน|เคลม|ครึ่งราคา|ทุน|ราคาพื้น|กำไร|มาร์จิ้น|margin|floor|cost/i;
+// ตอบรับว่าลดให้ได้ ("ลดได้อีก", "ลดให้ได้") — ราคาทุกตัวมาจากระบบคิดราคา ผู้ช่วยลดเองไม่ได้
+const AGREES_DISCOUNT = /ลด(?:ให้)?ได้|ลด(?:อีก|เพิ่ม)(?:ให้)?(?:ได้|เลย)/;
+const LETTERS = /ข้อ\s*([A-Za-z])\b/g;
+// อ้างว่าทำอะไรแทนเถ้าแก่ไปแล้ว ("แจ้งเฮียแล้ว", "ส่งเรื่องให้") — ระบบไม่ได้ทำ · "แจ้งจำนวนมาได้เลย" เป็นคำธรรมดา พูดได้
+const CLAIMS_CHAT = /ส่งเรื่อง|ปรึกษา|อนุมัติ|แจ้ง\S{0,10}แล้ว|ถาม\S{0,10}ให้แล้ว/;
+
+export function validateChatText(raw: string, facts: ChatTextFacts): Validation {
+  const text = raw.trim();
+  if (!text) return { ok: false, reason: "empty" };
+  if (FORBIDDEN_CHAT.test(text) || AGREES_DISCOUNT.test(text)) return { ok: false, reason: "forbidden" };
+  if (!text.includes("ครับ") || FEMININE.test(text)) return { ok: false, reason: "tone" };
+  if (text.length > MAX_REPLY_CHARS) return { ok: false, reason: "too_long" };
+  if (MENTIONS_COMPETITOR.test(text)) return { ok: false, reason: "competitor" };
+  if (CLAIMS_CHAT.test(text)) return { ok: false, reason: "claim" };
+  if (NUMBER_WORD.test(normalize(text))) return { ok: false, reason: "number_word" };
+  for (const m of text.matchAll(LETTERS)) {
+    if (!facts.letters.includes(m[1].toUpperCase() as Offer["id"])) return { ok: false, reason: "offer_letter" };
+  }
+  let t = normalize(text);
+  for (const name of facts.names) if (name.trim()) t = t.split(normalize(name)).join(" ");
+  const said = numbersIn(t);
+  for (const n of said) if (!facts.numbers.includes(n)) return fail("chat", n);
+  for (const n of facts.required ?? []) if (!said.includes(n)) return { ok: false, reason: `number:missing:${n}` };
+  for (const words of facts.requiredWords ?? []) {
+    if (!words.split("|").some((w) => text.includes(w))) return { ok: false, reason: `number:missing:${words}` };
+  }
+  return { ok: true };
+}

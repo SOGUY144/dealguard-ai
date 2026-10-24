@@ -175,3 +175,33 @@ describe("รีวิวรอบ 3 — ตัวแยกสำรองอ่
     expect(parse("จ่ายสดได้ไหม 1000 ชิ้น").paymentTermsRequestedDays).toBe(0);
   });
 });
+
+// แชตจริงคุณนก 25 ต.ค. 2569 — ประโยคที่เคยได้คำตอบ "ต้องการกี่ชิ้นครับ" วนซ้ำ
+describe("fallbackIntent — คำถามที่ไม่มีจำนวน", () => {
+  it('"320 บาทได้กี่เส้น" = งบรวม ไม่ใช่ราคาต่อชิ้น', () => {
+    expect(parse("320 บาทได้กี่เส้น")).toMatchObject({ intent: "negotiate_price", budgetTotal: 320, requestedPrice: null, quantity: null });
+  });
+
+  it('"150 บาทได้เท่าไหร่" = ขอราคาต่อชิ้น ยังไม่บอกจำนวน', () => {
+    const intent = parse("150 บาทได้เท่าไหร่");
+    expect(intent).toMatchObject({ intent: "negotiate_price", requestedPrice: 150, quantity: null });
+    expect(intent.budgetTotal).toBeUndefined();
+  });
+
+  it('"มีราคาอื่นไหม" / "มี ราคาอะไรบ้าง" = ถามเรื่องราคา (ไม่ใช่เรื่องที่ตอบไม่ได้)', () => {
+    expect(parse("มีราคาอื่นไหม")).toMatchObject({ intent: "negotiate_price" });
+    expect(parse("มี ราคาอะไรบ้าง")).toMatchObject({ intent: "negotiate_price" });
+  });
+
+  it("ลูกค้าหงุดหงิด / บ่นว่าตอบไม่ดี → frustrated (ประโยคปกติไม่มี)", () => {
+    for (const text of ["คุยไม่รู้เรื่องเลยว่ะ", "ตอบดีๆ", "ตอบหน่อยดิ", "ตอบมั่วจัง"]) {
+      expect(parse(text).frustrated, text).toBe(true);
+    }
+    expect(parse("ขอ 125 ได้ไหม 1000 ชิ้น").frustrated).toBeUndefined();
+  });
+
+  it('"รักกูไหม" ไม่ใช่การหลอกระบบ', () => {
+    expect(parse("รักกูไหม")).toMatchObject({ intent: "other", injectionSuspected: false });
+  });
+});
+

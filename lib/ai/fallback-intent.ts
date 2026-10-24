@@ -24,6 +24,13 @@ const ORDER = /สั่ง|ขอสั่ง|เอา\s*\d/;
 // ขอลด/ต่อราคาโดยไม่บอกราคา ("ถ้าสั่ง 1000 ชิ้น ลดได้ไหม") — ต้องเป็นการต่อราคา ไม่ใช่สั่งซื้อราคาเต็ม
 const DISCOUNT_CUE = /ลด|ต่อราคา|ถูกลง|ราคาพิเศษ|ราคาดี/;
 const CASH = /จ่ายสด|โอนทันที|เงินสด/;
+/** ถามเรื่องราคาโดยไม่บอกตัวเลข ("มีราคาอื่นไหม", "มีโปรไหม") — เป็นการถามราคา ไม่ใช่เรื่องที่ผู้ช่วยตอบไม่ได้ */
+export const PRICE_QUESTION = /ราคา|โปร|ส่วนลด|เท่าไหร่|เท่าไร/;
+/** งบรวม ("320 บาทได้กี่เส้น") — ตัวเลขนี้คือเงินทั้งหมด ไม่ใช่ราคาต่อชิ้น */
+const BUDGET = /(\d+(?:\.\d+)?)\s*(?:บาท|฿)\s*(?:ซื้อ)?\s*ได้\s*กี่\s*(?:ชิ้น|อัน|ตัว|เส้น)/;
+/** ลูกค้าหงุดหงิด/บ่นว่าผู้ช่วยตอบไม่ดี (แชตจริง 25 ต.ค. 2569: "คุยไม่รู้เรื่องเลยว่ะ", "ตอบดีๆ") */
+export const FRUSTRATED =
+  /คุยไม่รู้เรื่อง|ไม่รู้เรื่อง|ตอบ(?:ดีๆ|ให้ดี|ให้ตรง|หน่อย|มั่ว|วน|ไม่ตรง)|มั่ว(?:จัง|มาก|ไปหมด)|ถามอย่าง\s*ตอบอย่าง|โง่|ห่วย|กาก/;
 
 const QTY = /(\d+(?:\.\d+)?)\s*(?:ชิ้น|อัน|ตัว|เส้น|pcs)/i;
 const COMPETITOR = /(?:ร้านข้างๆ|ร้านข้าง|ร้านอื่น|ที่อื่น|เจ้าอื่น)\D{0,15}?(\d+(?:\.\d+)?)/;
@@ -56,11 +63,12 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
     .replace(/\d+\s*วัน/g, " ");
   const competitorPrice = num(text.match(COMPETITOR)?.[1]);
   const quantity = num(text.match(QTY)?.[1]);
+  const budgetTotal = num(text.match(BUDGET)?.[1]);
 
   const explicit = num(priceText.match(EXPLICIT_ASK)?.[1]);
-  let requestedPrice: number | null = explicit !== null && explicit !== quantity ? explicit : null;
+  let requestedPrice: number | null = explicit !== null && explicit !== quantity && explicit !== budgetTotal ? explicit : null;
   for (const pattern of PRICE_PATTERNS) {
-    if (requestedPrice !== null) break;
+    if (requestedPrice !== null || budgetTotal !== null) break;
     const value = num(priceText.match(pattern)?.[1]);
     if (value !== null && value !== competitorPrice && value !== quantity) requestedPrice = value;
   }
@@ -78,7 +86,7 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
             ? "negotiate_price"
             : ORDER.test(text) && quantity !== null
               ? "order"
-              : quantity !== null || CASH.test(text)
+              : quantity !== null || budgetTotal !== null || CASH.test(text) || PRICE_QUESTION.test(text)
                 ? "negotiate_price"
                 : "other";
 
@@ -98,6 +106,8 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
     competitorClaim: competitorPrice !== null ? { mentioned: true, price: competitorPrice } : null,
     buyerName: null,
     injectionSuspected,
+    ...(dealing && budgetTotal !== null && { budgetTotal }),
+    ...(FRUSTRATED.test(text) && { frustrated: true }),
   };
 }
 

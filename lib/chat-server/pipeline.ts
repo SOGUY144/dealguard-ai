@@ -2,6 +2,7 @@
 // ตัวเลขราคาทุกตัวมาจาก Deal Engine · ยืนยันออเดอร์จากข้อเสนอที่ server เก็บไว้เท่านั้น
 import "server-only";
 import { isOwnerApproved } from "@/lib/chat/owner-approval";
+import { writeChatText, type ChatWriter } from "@/lib/ai/chat-writer";
 import { infoTopics } from "@/lib/ai/info-topics";
 import { parseIntent, type IntentLlm } from "@/lib/ai/intent";
 import { writeOffersText, type ReplyWriter } from "@/lib/ai/responder";
@@ -32,6 +33,7 @@ import { pickedLetter, rejectedLetters, rejectedLevers, type TradeLever } from "
 import { productImageUrl } from "@/lib/products/image-url";
 import type { Intent, MerchantConfig, NegotiationState, PricedOffer } from "@/lib/deal-engine/types";
 import type { Speaker, SpokenAudio } from "@/lib/voice/speaker";
+import { chatReply, conversationOf, followUp, infoUnknownReply, priceGuideReply, type FollowUpReply } from "./follow-up";
 import type { ChatStore, StoredChat } from "./store";
 
 export type PipelineDeps = {
@@ -47,6 +49,8 @@ export type PipelineDeps = {
   /** LLM เรียบเรียงข้อความที่มากับข้อเสนอ — null/ไม่ใส่ = template อย่างเดียว */
   replyWriter?: ReplyWriter | null;
   replyTimeoutMs?: number;
+  /** LLM เรียบเรียงข้อความอื่นที่ไม่ใช่การ์ดข้อเสนอ (ราคาตามจำนวน / ขอลดซ้ำ / คุยเล่น ฯลฯ) — null/ไม่ใส่ = template */
+  chatWriter?: ChatWriter | null;
 };
 
 /** คำตอบ + ฉบับสั้นของข้อความแรกไว้ตอบเป็นเสียง (LLM เขียน · ดู WrittenText) */
@@ -215,6 +219,12 @@ async function send(
 
   const now = clock(deps);
   const open = usableOffers(messages, config, now);
+  // มีการ์ดอยู่แล้ว: GPT ชอบดึงราคา/จำนวนจากข้อความก่อนหน้ามาใส่ ("ลดลงหน่อยไม่ได้หรอ" → ได้ 140 บาท 100 ชิ้นเดิม)
+  // ตัวเลขที่ข้อความนี้ไม่ได้พูด = ของเดิมที่อยู่ในการ์ดแล้ว ไม่ใช่คำขอใหม่ (ทดสอบกับ GPT จริง 25 ต.ค. 2569)
+  if (open && !open.confirmed) {
+    if (intent.requestedPrice !== null && !saysNumber(text, intent.requestedPrice)) intent = { ...intent, requestedPrice: null };
+    if (intent.quantity !== null && !saysNumber(text, intent.quantity)) intent = { ...intent, quantity: null };
+  }
 
   // อ้างราคาร้านอื่นอย่างเดียว ทั้งที่มีข้อเสนออยู่แล้ว → ไม่ลดตาม ชวนดูข้อเสนอเดิม (ไม่นับเป็นการต่อรองรอบใหม่)
   const competitorPrice = intent.competitorClaim?.price ?? null;
@@ -254,6 +264,11 @@ async function send(
 
 
   const buyerName = addressName(buyer.displayName);
+  // ถามต่อจากบทสนทนาโดยไม่บอกจำนวน (ขอลดซ้ำ / หลังสั่งซื้อ / งบรวม / หงุดหงิด) — เคยได้ "ต้องการกี่ชิ้นครับ" วนซ้ำ
+  const follow = followUp({ intent, text, open, messages, config, buyerName, ownerName: storefront.ownerName });
+  if (follow?.kind === "reply") return commit(deps, chat, messages, await prepare(await writeChat(deps, follow.reply, messages, text)));
+  // ขอราคาใหม่โดยไม่บอกจำนวน ทั้งที่มีการ์ดอยู่ → ใช้จำนวนในการ์ด (ไม่ถามซ้ำ)
+  if (follow?.kind === "use_card_qty") intent = { ...intent, quantity: follow.qty };
   const continued = continueAfterRejection(intent, rejected, messages, text, products);
   // ต่อรองรอบใหม่หลังลูกค้าปฏิเสธ — ข้อความเปิดไม่ทวนราคาที่ขอซ้ำ
   const afterRejection = continued !== intent;
@@ -287,9 +302,25 @@ async function send(
     info: { asked: intent.intent === "ask_info", topics: infoTopics(text), answers: config.answers },
   });
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
+  const fullProduct = config.products.find((p) => p.sku === intent.sku);
+  const ctx = { buyerName, ownerName: storefront.ownerName };
+  const unknownInfo = intent.intent === "ask_info" && infoTopics(text).length === 0 && !ASKS_COST.test(text);
+  // ข้อความที่ไม่ใช่การ์ดข้อเสนอ: ระบบตัดสินว่าพูดอะไร แล้วให้ GPT เรียบเรียงจากบทสนทนา (ตรวจตัวเลข · ไม่ผ่านใช้ template)
+  const chatFollowUp: FollowUpReply | null =
+    result.kind === "ask_quantity" && competitorPrice === null && fullProduct
+      ? priceGuideReply(ctx, fullProduct, intent.requestedPrice)
+      : result.kind === "not_negotiation" && !ASKS_COST.test(text) && template.messages.length === 1 && template.messages[0].type === "ai_text"
+        ? unknownInfo
+          ? infoUnknownReply(ctx, fullProduct, template.messages[0].text)
+          : infoTopics(text).length === 0
+            ? chatReply(ctx, fullProduct, template.messages[0].text)
+            : null
+        : null;
   // LLM ได้แค่ตัวเลขที่ Deal Engine คิดแล้ว + ชื่อลูกค้า (ไม่ได้ข้อความดิบ) · ตรวจไม่ผ่านใช้ template
   const reply =
-    result.kind === "offers"
+    chatFollowUp
+      ? await writeChat(deps, chatFollowUp, messages, text, buttonsOf(template.messages[0]))
+      : result.kind === "offers"
       ? await writeOffersReply(deps, template, {
           buyerName,
           ownerName: storefront.ownerName,
@@ -312,6 +343,28 @@ async function send(
     await Promise.resolve(saveCounters(store, { ...current, negotiation: result.state }, current.negotiation)).catch(() => false);
     throw err;
   }
+}
+
+/** ปุ่ม/chip ของข้อความ template (เก็บไว้ตอน GPT เขียนข้อความใหม่) */
+function buttonsOf(m: ChatMessageDraft | undefined): Pick<ChatMessageOf<"ai_text">, "cta" | "suggest"> {
+  if (m?.type !== "ai_text") return {};
+  return { ...(m.cta && { cta: m.cta }), ...(m.suggest && { suggest: m.suggest }) };
+}
+
+/** ข้อความเดียวที่ GPT เรียบเรียงจากบทสนทนา (ตัวเลขต้องอยู่ในข้อมูลของระบบ) · ไม่ผ่าน/ไม่มีคีย์ → template */
+async function writeChat(
+  deps: PipelineDeps,
+  follow: FollowUpReply,
+  messages: ChatMessage[],
+  text: string,
+  keep: Pick<ChatMessageOf<"ai_text">, "cta" | "suggest"> = {},
+): Promise<Written> {
+  const written = await writeChatText(deps.chatWriter, { ...follow.facts, ...conversationOf(messages, text) }, follow.template, {
+    timeoutMs: deps.replyTimeoutMs,
+  });
+  if (written.reason) console.warn(`[chat] ข้อความ LLM ไม่ผ่าน (${written.reason}) ใช้ template แทน`);
+  // คงปุ่ม/chip ของข้อความเดิม (เช่น เปิดรายการสินค้า) · ข้อความใหม่บอกเองว่าต้องมีปุ่มอะไร
+  return { messages: [{ type: "ai_text", text: written.text, ...keep, ...follow.extra }] };
 }
 
 /** แทนข้อความแรกของ AI (ที่มากับการ์ดข้อเสนอ) ด้วยข้อความที่ LLM เรียบเรียงและผ่านการตรวจตัวเลขแล้ว */

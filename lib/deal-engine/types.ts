@@ -49,6 +49,10 @@ export type Intent = {
   competitorClaim: { mentioned: boolean; price: number | null } | null;
   buyerName: string | null;
   injectionSuspected: boolean;
+  /** งบรวมที่ลูกค้าบอก ("320 บาทได้กี่เส้น") — ใส่เฉพาะเมื่อมี */
+  budgetTotal?: number | null;
+  /** ลูกค้าหงุดหงิด/บ่นว่าตอบไม่ดี — ใส่เฉพาะเมื่อใช่ */
+  frustrated?: boolean;
 };
 
 /** ข้อเสนอที่ส่งให้ลูกค้าเห็นได้ (HANDOFF §5) — ไม่มีต้นทุนหรือ margin */
