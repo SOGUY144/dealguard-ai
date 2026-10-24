@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Thai } from "next/font/google";
+import { MovingBackground } from "@/components/background/moving-background";
 import "./globals.css";
 
 const plexThai = IBM_Plex_Sans_Thai({
@@ -16,7 +17,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="th" className={`${plexThai.variable} h-full antialiased`}>
-      <body className="app-bg min-h-full flex flex-col">{children}</body>
+      {/* isolate: พื้นหลังเคลื่อนไหว (z ติดลบ) อยู่เหนือ mesh ของ body แต่ใต้เนื้อหา */}
+      <body className="app-bg isolate min-h-full flex flex-col">
+        <MovingBackground />
+        {children}
+      </body>
     </html>
   );
 }

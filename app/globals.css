@@ -9,6 +9,16 @@
   --font: var(--font-plex-thai), "Leelawadee UI", Tahoma, sans-serif;
 }
 
+/* พื้นหลังเคลื่อนไหวค่อยๆ ซ้อนทับ mesh เดิม (ไม่กระพริบตอนโหลดเสร็จ) */
+@keyframes bg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* bottom sheet รายการสินค้าบนมือถือ (ปิดเองเมื่อ prefers-reduced-motion ด้วย motion-safe:) */
 @keyframes sheet-up {
   from {
