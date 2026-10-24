@@ -62,6 +62,22 @@ const REAL_CHAT: Step[] = [
   { say: "ลดหน่อยได้ไหม", checks: [noAskQty, has(/ยืนยัน|ออเดอร์|สั่ง/, "พูดถึงออเดอร์ที่เพิ่งยืนยัน")] },
 ];
 
+/** คุยอิสระ (25 ต.ค. 2569): ทักทาย/ถามทั่วไปต้องได้คำตอบตรงคำถาม ไม่ใช่ "ราคาส่ง ฿150 ต้องการกี่ชิ้น" ทุกครั้ง */
+const productIntro = /ราคาส่ง ฿150 ต่อชิ้นครับ ต้องการกี่ชิ้น/;
+const noIntro = not(productIntro, "ไม่ตอบด้วยข้อความแนะนำสินค้าเดิม");
+const noMadeUpSpec = not(/ของแท้|ทุกรุ่น|ชาร์จเร็ว(?!.*(?:ไม่มีข้อมูล|ไม่แน่ใจ|ไม่ทราบ))|รับประกัน/, "ไม่อวดอ้างสเปกที่ร้านไม่ได้ให้ข้อมูล");
+const FREE_CHAT: Step[] = [
+  { pick: true },
+  { say: "สวัสดีครับ", checks: [noIntro, has(/สวัสดี/, "ทักทายกลับ")] },
+  { say: "เป็นคนหรือบอท", checks: [has(/AI|เอไอ|ผู้ช่วย/, "บอกตรงๆ ว่าเป็นผู้ช่วย AI"), noIntro] },
+  { say: "สายยาวกี่เมตร", checks: [has(/1\s*(?:เมตร|ม\.)/, "ตอบว่ายาว 1 เมตร (จากชื่อสินค้า)")] },
+  { say: "ใช้กับ iPhone ได้ไหม", checks: [noMadeUpSpec, has(/คุยกับคนจริง|ไม่มีข้อมูล|ไม่แน่ใจ|ไม่ทราบ/, "บอกว่าไม่มีข้อมูล ไม่เดา")] },
+  { say: "ร้านอยู่ที่ไหน", checks: [has(/คุยกับคนจริง/, "ชวนคุยกับคนจริง (ไม่มีข้อมูลที่ตั้งร้าน)")] },
+  { say: "ชาร์จเร็วไหม", checks: [noMadeUpSpec] },
+  { say: "มีราคาส่งไหม", checks: [has(/500|1,500|3,000/, "บอกขั้นราคาตามจำนวน")] },
+  { say: "ขอบคุณครับ", checks: [noIntro] },
+];
+
 /** ทางปกติตาม SKILL §7 — ต้องยังได้ 3 ทางแบบเดิม */
 const HAPPY_PATH: Step[] = [
   { pick: true },
@@ -166,7 +182,11 @@ async function main() {
     ...(writers.createChatWriter && { chatWriter: writers.createChatWriter() }),
   } as PipelineDeps;
   const mode = intentLlm ? `GPT (${process.env.OPENAI_MODEL})` : "ไม่มีคีย์ — ตัวแยกสำรอง + template";
-  const results = [await play("แชตคุณนก (จริง)", REAL_CHAT, deps), await play("ทางปกติ (SKILL §7)", HAPPY_PATH, deps)];
+  const results = [
+    await play("แชตคุณนก (จริง)", REAL_CHAT, deps),
+    await play("คุยอิสระ", FREE_CHAT, deps),
+    await play("ทางปกติ (SKILL §7)", HAPPY_PATH, deps),
+  ];
   const passed = results.reduce((s, r) => s + r.passed, 0);
   const total = results.reduce((s, r) => s + r.total, 0);
   const repeats = results.reduce((s, r) => s + r.repeats, 0);

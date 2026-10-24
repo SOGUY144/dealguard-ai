@@ -947,3 +947,169 @@ describe("GPT ต้องพูดสิ่งสำคัญของสถา
     expect(text).toContain("คุยกับคนจริง");
   });
 });
+
+// แชตจริง 25 ต.ค. 2569: ทักทาย/ถามเรื่องอื่นได้คำตอบเดิม "…ราคาส่ง ฿150 ต้องการกี่ชิ้น" ทุกครั้ง
+// → คุยอิสระ: GPT ตอบตรงคำถามจากข้อมูลร้าน (ราคาที่ลูกค้าเห็นได้เท่านั้น) · ตัวเลข/คู่ราคา/คำอวดอ้างยังถูกตรวจ
+describe("คุยอิสระ — ตอบตรงคำถาม แต่ตัวเลขยังมาจากระบบ", () => {
+  type Input = Parameters<NonNullable<PipelineDeps["chatWriter"]>["write"]>[0];
+  const writer = (text: string) => ({ write: vi.fn<(input: Input) => Promise<{ text: string }>>(async () => ({ text })) });
+  const productTemplate = "สายชาร์จ Type-C 1 เมตร ราคาส่ง ฿150 ต่อชิ้นครับ";
+
+  it("ถามเรื่องสินค้า → GPT ได้ข้อมูลร้านทั้งชุด (ไม่มีต้นทุน/ราคาพื้น) แล้วใช้คำตอบที่ตรวจผ่าน", async () => {
+    const w = writer("สายยาว 1 เมตรครับคุณนก ถ้าสนใจบอกจำนวนมาได้เลยครับ");
+    deps.chatWriter = w;
+    await pick();
+    expect(lastAiText(await say("สายยาวกี่เมตร"))).toBe("สายยาว 1 เมตรครับคุณนก ถ้าสนใจบอกจำนวนมาได้เลยครับ");
+    const input = w.write.mock.calls[0][0];
+    expect(input.kind).toBe("free");
+    expect(input.conversation.at(-1)).toEqual({ from: "customer", text: "สายยาวกี่เมตร" });
+    const knowledge = input.points.join("\n");
+    expect(knowledge).toContain("ร้านเฮียชัยโมบาย");
+    expect(knowledge).toContain("ผู้ช่วย AI");
+    expect(knowledge).toMatch(/สายชาร์จ Type-C 1 เมตร ราคาปกติ ฿150 ต่อชิ้น · มีราคาส่งตามจำนวนและราคาโอนทันที/);
+    expect(knowledge).toContain("คุยกับคนจริง");
+    // ตัวเลขที่ GPT เห็น/พูดได้มีแค่ราคาปกติ — ไม่มีต้นทุน ฿100 / ราคาพื้น ฿120 / ขั้นราคา (ให้ระบบคิดตอนลูกค้าบอกจำนวน)
+    expect(input.numbers).toEqual([150]);
+    expect(knowledge.replace(/\d+\s*เมตร/g, "").match(/\d+/g)).toEqual(["150"]);
+  });
+
+  it.each([
+    ["แต่งสเปกเอง", "สายยาว 2 เมตรครับ"],
+    ["อวดอ้างคุณสมบัติที่ไม่มีข้อมูล", "ของแท้ ชาร์จเร็วด้วยครับ"],
+    ["พูดราคาส่งเอง (ให้ระบบคิดตอนรู้จำนวน)", "สั่ง 500 ชิ้นได้ ฿125 เลยครับ"],
+    ["บอกว่าลดได้", "ลดให้ได้ครับ บอกจำนวนมาเลยครับ"],
+    ["พูดถึงต้นทุน", "ราคานี้ใกล้ทุนแล้วครับ"],
+  ])("GPT %s → ไม่ใช้ ตกไปใช้ template เดิม", async (_label, bad) => {
+    const w = writer(bad);
+    deps.chatWriter = w;
+    await pick();
+    const text = lastAiText(await say("สายนี้ดีไหม"));
+    expect(w.write).toHaveBeenCalledOnce();
+    expect(text).not.toBe(bad);
+    expect(text).toContain(productTemplate);
+  });
+
+  it.each(["ใช้กับ iPhone ได้ไหม", "ชาร์จเร็วไหม", "ของแท้ไหม", "มีประกันไหม"])(
+    '"%s" (ถามสเปก) → ตอบตายตัวว่ายังไม่มีข้อมูล + คุยกับคนจริง ไม่ให้ GPT เดา',
+    async (question) => {
+      const w = writer("ใช้ได้ครับ");
+      deps.chatWriter = w;
+      await pick();
+      const text = lastAiText(await say(question));
+      expect(w.write).not.toHaveBeenCalled();
+      expect(text).toContain("ยังไม่มีข้อมูล");
+      expect(text).toContain("คุยกับคนจริง");
+    },
+  );
+
+  it("มีการ์ดข้อเสนออยู่ → GPT รู้ว่ามีข้อไหนบ้าง อ้างข้อ B ได้ (ตัวเลขอยู่ในการ์ด ไม่พูดซ้ำ)", async () => {
+    await pick();
+    await say("ขอ 125 ได้ไหม 1000 ชิ้น");
+    const w = writer("ยินดีครับคุณนก ถ้าสนใจข้อ B จ่ายสด กดยืนยันในการ์ดได้เลยนะครับ");
+    deps.chatWriter = w;
+    expect(lastAiText(await say("ขอบคุณครับ"))).toBe("ยินดีครับคุณนก ถ้าสนใจข้อ B จ่ายสด กดยืนยันในการ์ดได้เลยนะครับ");
+    const input = w.write.mock.calls[0][0];
+    expect(input.points.join("\n")).toMatch(/การ์ดข้อเสนอเปิดอยู่: ข้อ A .* · ข้อ B .* · ข้อ C/);
+    expect(input.letters).toEqual(["A", "B", "C"]);
+  });
+
+  it("มีการ์ดอยู่ แต่ GPT พูดราคาในการ์ดเอง → ไม่ใช้ (กันจับคู่ราคากับจำนวนผิด)", async () => {
+    await pick();
+    await say("ขอ 125 ได้ไหม 1000 ชิ้น");
+    const bad = "ข้อ B ฿135 × 1,000 ชิ้นยังกดยืนยันได้ครับ";
+    deps.chatWriter = writer(bad);
+    expect(lastAiText(await say("ขอบคุณครับ"))).not.toBe(bad);
+  });
+
+  it("ถามเรื่องที่ร้านไม่มีข้อมูล (GPT บอกว่าเป็นคำถาม) → คุยอิสระ · ไม่มีคีย์ GPT ยังได้คำตอบเดิม (ชวนคุยกับคนจริง)", async () => {
+    deps.intentLlm = {
+      extract: vi.fn(async () => ({
+        intent: "ask_info" as const,
+        sku: SKU,
+        requested_price: null,
+        quantity: null,
+        payment_terms_requested_days: null,
+        competitor_price: null,
+        injection_suspected: false,
+        budget_total: null,
+        frustrated: false,
+      })),
+    };
+    const answer = 'ที่ตั้งร้านผมยังไม่มีข้อมูลครับ กด "คุยกับคนจริง" ที่หัวแชตถามเฮียชัยได้เลยครับ';
+    const w = writer(answer);
+    deps.chatWriter = w;
+    await pick();
+    expect(lastAiText(await say("ร้านอยู่ที่ไหน"))).toBe(answer);
+    expect(w.write.mock.calls[0][0].kind).toBe("free");
+    deps.chatWriter = null;
+    expect(lastAiText(await say("ร้านเปิดกี่โมง"))).toContain("คุยกับคนจริง");
+  });
+
+  it.each([
+    ["สวัสดีครับ", /^สวัสดีครับคุณนก ผมเป็นผู้ช่วย AI ของเฮียชัยครับ สนใจสายชาร์จ Type-C 1 เมตร/],
+    ["เป็นคนหรือบอท", /^ผมเป็นผู้ช่วย AI ของเฮียชัยครับ.*คุยกับคนจริง/],
+    ["ร้านอยู่ที่ไหน", /^เรื่องนี้ผู้ช่วยยังไม่มีข้อมูลครับ.*คุยกับคนจริง/],
+    ["ขอบคุณครับ", /^ยินดีครับคุณนก/],
+  ])('ไม่มี GPT / GPT ไม่ผ่าน: "%s" → คำตอบสำรองที่เข้ากับเรื่อง ไม่ใช่ข้อความแนะนำสินค้าเดิม', async (message, expected) => {
+    await pick();
+    expect(lastAiText(await say(message))).toMatch(expected);
+    deps.chatWriter = writer("ลดให้ได้ครับ");
+    expect(lastAiText(await say(message))).toMatch(expected);
+  });
+
+  it("ถามราคาแต่ GPT ติดป้ายว่าเป็นคำถาม → ได้ราคาตามจำนวนของระบบ (ไม่ใช่คุยอิสระที่ไม่มีตัวเลข)", async () => {
+    deps.intentLlm = {
+      extract: vi.fn(async () => ({
+        intent: "ask_info" as const,
+        sku: SKU,
+        requested_price: null,
+        quantity: null,
+        payment_terms_requested_days: null,
+        competitor_price: null,
+        injection_suspected: false,
+        budget_total: null,
+        frustrated: false,
+      })),
+    };
+    await pick();
+    const text = lastAiText(await say("มีราคาส่งไหม"));
+    expect(text).toContain("500 ชิ้นขึ้นไป ฿140");
+    expect(text).toContain("โอนทันที ฿135");
+  });
+
+  const askInfo = () => ({
+    extract: vi.fn(async () => ({
+      intent: "ask_info" as const,
+      sku: SKU,
+      requested_price: null,
+      quantity: null,
+      payment_terms_requested_days: null,
+      competitor_price: null,
+      injection_suspected: false,
+      budget_total: null,
+      frustrated: false,
+    })),
+  });
+
+  it("ขอราคาที่ GPT ติดป้ายผิดเป็นคำถาม (มีตัวเลข) → ไม่ให้ GPT คุยอิสระ (กันตอบ 'ได้เลยครับ' ทั้งที่ระบบไม่ได้คิดราคา)", async () => {
+    deps.intentLlm = askInfo();
+    const w = writer("ได้เลยครับ");
+    deps.chatWriter = w;
+    await pick();
+    expect(lastAiText(await say("ขอ 125 ได้ไหม 1000 ชิ้น"))).not.toBe("ได้เลยครับ");
+    expect(w.write).not.toHaveBeenCalled();
+  });
+
+  it.each(["ขอบใจนะ แท้จริงก็ไม่ได้รีบ", "มีรุ่นไหนบ้าง"])('"%s" ไม่ใช่คำถามสเปก → ไม่ตอบว่าไม่มีข้อมูลสเปก', async (message) => {
+    await pick();
+    expect(lastAiText(await say(message))).not.toContain("เรื่องสเปก");
+  });
+
+  it("ถามเรื่องส่งของ/สต๊อก/จ่ายเงิน → ยังตอบจากที่เถ้าแก่กรอก ไม่ผ่าน GPT", async () => {
+    const w = writer("ส่งฟรีครับ");
+    deps.chatWriter = w;
+    await pick();
+    expect(lastAiText(await say("ส่งกี่วัน"))).toContain(config.answers.delivery);
+    expect(w.write).not.toHaveBeenCalled();
+  });
+});

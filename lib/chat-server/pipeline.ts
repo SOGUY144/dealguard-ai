@@ -3,6 +3,7 @@
 import "server-only";
 import { isOwnerApproved } from "@/lib/chat/owner-approval";
 import { writeChatText, type ChatWriter } from "@/lib/ai/chat-writer";
+import { thaiNumberWordsToDigits } from "@/lib/ai/thai-numbers";
 import { infoTopics } from "@/lib/ai/info-topics";
 import { parseIntent, type IntentLlm } from "@/lib/ai/intent";
 import { writeOffersText, type ReplyWriter } from "@/lib/ai/responder";
@@ -33,7 +34,17 @@ import { pickedLetter, rejectedLetters, rejectedLevers, type TradeLever } from "
 import { productImageUrl } from "@/lib/products/image-url";
 import type { Intent, MerchantConfig, NegotiationState, PricedOffer } from "@/lib/deal-engine/types";
 import type { Speaker, SpokenAudio } from "@/lib/voice/speaker";
-import { chatReply, conversationOf, followUp, infoUnknownReply, priceGuideReply, type FollowUpReply } from "./follow-up";
+import {
+  ASKS_PRICE,
+  conversationOf,
+  followUp,
+  freeChatReply,
+  priceGuideReply,
+  SPEC_QUESTION,
+  specQuestionText,
+  THANKS_ONLY,
+  type FollowUpReply,
+} from "./follow-up";
 import type { ChatStore, StoredChat } from "./store";
 
 export type PipelineDeps = {
@@ -304,21 +315,59 @@ async function send(
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
   const fullProduct = config.products.find((p) => p.sku === intent.sku);
   const ctx = { buyerName, ownerName: storefront.ownerName };
-  const unknownInfo = intent.intent === "ask_info" && infoTopics(text).length === 0 && !ASKS_COST.test(text);
   // ข้อความที่ไม่ใช่การ์ดข้อเสนอ: ระบบตัดสินว่าพูดอะไร แล้วให้ GPT เรียบเรียงจากบทสนทนา (ตรวจตัวเลข · ไม่ผ่านใช้ template)
+  // ทักทาย/คุยเล่น/ถามเรื่องที่ไม่ใช่ส่งของ-สต๊อก-จ่ายเงิน → คุยอิสระจากข้อมูลร้าน (ตัวเลขยังต้องมาจากระบบ)
+  const focus = fullProduct ?? config.products.find((p) => p.sku === lastSku(messages));
+  const only = template.messages.length === 1 ? template.messages[0] : undefined;
+  // ข้อความที่มีตัวเลข (เช่น "ขอ 125 ได้ไหม 1000 ชิ้น" ที่ GPT ติดป้ายผิดเป็นคำถาม) ไม่ให้คุยอิสระ — GPT อาจตอบ "ได้เลยครับ" ทั้งที่ระบบไม่ได้คิดราคา
+  const saysNumbers = /\d/.test(thaiNumberWordsToDigits(text).replace(/[๐-๙]/g, "0"));
+  const freeTemplate =
+    result.kind === "not_negotiation" &&
+    !ASKS_COST.test(text) &&
+    infoTopics(text).length === 0 &&
+    !saysNumbers &&
+    only?.type === "ai_text"
+      ? only.text
+      : null;
+  const freeChat = freeTemplate !== null;
+  // ถามสเปก/การใช้งาน → ร้านไม่มีข้อมูลสเปกในระบบ ตอบตายตัว ไม่ให้ GPT เดา
+  // (GPT บอกว่าเป็นคำถาม → template เดิมบอกอยู่แล้วว่ายังตอบไม่ได้ + ชวนคุยกับคนจริง ใช้อันนั้น)
+  const specReply: Reply | null =
+    freeChat && SPEC_QUESTION.test(text)
+      ? {
+          messages: [
+            {
+              type: "ai_text",
+              text: intent.intent === "ask_info" ? freeTemplate : specQuestionText(storefront.ownerName, focus?.name),
+              ...(!focus && { cta: "open_products" as const }),
+            },
+          ],
+        }
+      : null;
   const chatFollowUp: FollowUpReply | null =
     result.kind === "ask_quantity" && competitorPrice === null && fullProduct
       ? priceGuideReply(ctx, fullProduct, intent.requestedPrice)
-      : result.kind === "not_negotiation" && !ASKS_COST.test(text) && template.messages.length === 1 && template.messages[0].type === "ai_text"
-        ? unknownInfo
-          ? infoUnknownReply(ctx, fullProduct, template.messages[0].text)
-          : infoTopics(text).length === 0
-            ? chatReply(ctx, fullProduct, template.messages[0].text)
-            : null
+      : freeChat && !specReply && focus && ASKS_PRICE.test(text) && !THANKS_ONLY.test(text)
+        ? priceGuideReply(ctx, focus, null)
+        : freeChat && !specReply
+        ? freeChatReply(
+            {
+              ...ctx,
+              storeName: storefront.storeName,
+              tagline: storefront.tagline,
+              products: config.products,
+              focus,
+              text,
+              open,
+              lastOrder: messages.findLast((m): m is ChatMessageOf<"order_summary"> => m.type === "order_summary"),
+            },
+            freeTemplate,
+          )
         : null;
   // LLM ได้แค่ตัวเลขที่ Deal Engine คิดแล้ว + ชื่อลูกค้า (ไม่ได้ข้อความดิบ) · ตรวจไม่ผ่านใช้ template
   const reply =
-    chatFollowUp
+    specReply ??
+    (chatFollowUp
       ? await writeChat(deps, chatFollowUp, messages, text, buttonsOf(template.messages[0]))
       : result.kind === "offers"
       ? await writeOffersReply(deps, template, {
@@ -331,7 +380,7 @@ async function send(
           competitorPrice: competitorPrice !== null && saysNumber(text, competitorPrice) ? competitorPrice : null,
           offers: result.offers.map((p) => p.offer),
         })
-      : template;
+      : template);
   console.info(
     `[chat] parse ${parsedAt - started} ms (${parsedBy}) · engine ${engineAt - parsedAt} ms · write ${Date.now() - engineAt} ms`,
   );

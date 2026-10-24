@@ -1,6 +1,7 @@
 // Layer 3 สำหรับข้อความที่ไม่ใช่การ์ดข้อเสนอ (ราคาตามจำนวน / ขอลดซ้ำ / หลังสั่งซื้อ / งบรวม / หงุดหงิด / คุยเล่น)
 // แชตจริง 25 ต.ค. 2569: ข้อความสำเร็จรูปตอบวนเหมือนหุ่นยนต์ → ให้ GPT ตอบเป็นธรรมชาติจากบทสนทนาล่าสุด
 // ระบบเป็นคนตัดสินว่าจะพูดอะไร (points) และตัวเลขทุกตัว — GPT เรียบเรียงเท่านั้น · ตรวจไม่ผ่าน/ช้า/ล่ม → template
+// ยกเว้น kind "free" (คุยเล่น/ถามทั่วไป): GPT เลือกเองว่าจะตอบอะไรจากข้อมูลร้าน แต่ตัวเลข/คำต้องห้ามยังตรวจเหมือนกัน
 import type { Offer } from "@/lib/chat/types";
 import { type ChatTextFacts, validateChatText } from "./validator";
 import type { WrittenText } from "./responder";
@@ -8,8 +9,11 @@ import type { WrittenText } from "./responder";
 export type ChatTurn = { from: "customer" | "shop"; text: string };
 
 export type ChatWriterInput = ChatTextFacts & {
-  /** เรื่องที่ตอบ (บอก GPT ว่าสถานการณ์คืออะไร) */
-  kind: "price_guide" | "hold_offers" | "after_order" | "budget" | "frustrated" | "chat" | "info_unknown";
+  /**
+   * เรื่องที่ตอบ (บอก GPT ว่าสถานการณ์คืออะไร)
+   * free = คุยอิสระ: points คือข้อมูลร้านทั้งหมดที่รู้ (ตอบตรงคำถามจากข้อมูลนี้) ไม่ใช่สิ่งที่ต้องพูดครบทุกข้อ
+   */
+  kind: "price_guide" | "hold_offers" | "after_order" | "budget" | "frustrated" | "free";
   buyerName: string;
   ownerName: string;
   productName?: string;

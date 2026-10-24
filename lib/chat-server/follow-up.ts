@@ -233,34 +233,120 @@ function frustratedReply(ctx: Context, card: ChatMessageOf<"offers"> | undefined
   };
 }
 
-/** คุยเล่น/ทักทาย/เรื่องอื่น (template เดิมเป็นคำตอบสำรอง) */
-export function chatReply(ctx: Pick<Context, "buyerName" | "ownerName">, product: Product | undefined, template: string): FollowUpReply {
+/** ข้อมูลร้านที่ผู้ช่วยรู้ตอนคุยอิสระ — เฉพาะข้อมูลที่ลูกค้าเห็นได้อยู่แล้ว (ไม่มีต้นทุน/ราคาพื้น) */
+export type FreeChatContext = {
+  buyerName: string;
+  ownerName: string;
+  storeName: string;
+  tagline?: string;
+  products: Product[];
+  /** สินค้าที่คุยกันอยู่ (ขึ้นก่อนในรายการ) */
+  focus?: Product;
+  /** การ์ดข้อเสนอที่ยังยืนยันได้ */
+  open?: ChatMessageOf<"offers">;
+  /** ออเดอร์ล่าสุดในแชตนี้ */
+  lastOrder?: ChatMessageOf<"order_summary">;
+  /** ข้อความลูกค้าตอนนี้ — ใช้เลือกคำตอบสำรองให้เข้ากับเรื่องที่คุย (ทักทาย/ขอบคุณ/ถามว่าเป็นบอทไหม) */
+  text?: string;
+};
+
+/** ชื่อสินค้าอื่นที่ใส่ในข้อมูลให้ GPT มากสุด (ร้านที่มีสินค้าเยอะ ข้อมูลจะยาวเกิน) */
+export const FREE_CHAT_MAX_PRODUCTS = 8;
+
+/**
+ * คุยอิสระ (ทักทาย / คุยเล่น / ถามเรื่องทั่วไป): GPT อ่านข้อความลูกค้าแล้วตอบตรงคำถามจากข้อมูลร้านที่ให้
+ * แชตจริง 25 ต.ค. 2569: ทุกข้อความที่ไม่ใช่การต่อราคาได้คำตอบเดิม "…ราคาส่ง ฿150 ต้องการกี่ชิ้น" ไม่ว่าลูกค้าถามอะไร
+ * อิสระแค่เรื่องคำพูด — ตัวเลขพูดได้แค่ราคาปกติของสินค้าที่คุยอยู่ (เท่าข้อความแบบเดิม) + ขนาดในชื่อสินค้า
+ * ราคาส่ง/ราคาโอน/ราคาในการ์ด ไม่ให้ตัวเลข: GPT จับคู่ราคากับจำนวนผิดได้ ("500 ชิ้น ฿125") ซึ่งตัวตรวจจับได้ไม่ครบทุกสำนวน
+ * → ลูกค้าถามราคาเมื่อไหร่ ข้อความนั้นเข้าทางคิดราคาของระบบ (priceGuideReply / การ์ด) ไม่ใช่ทางนี้
+ * ไม่มีต้นทุน/ราคาพื้นในข้อมูลนี้ (SKILL §6.8) · ตรวจไม่ผ่าน → template เดิม
+ */
+export function freeChatReply(ctx: FreeChatContext, template: string): FollowUpReply {
+  const { focus, open, lastOrder } = ctx;
+  const others = ctx.products.filter((p) => p.sku !== focus?.sku).slice(0, FREE_CHAT_MAX_PRODUCTS);
+  const card = open && !open.confirmed ? open : undefined;
+  const ordered = lastOrder?.offer;
+  const knowledge = [
+    `ร้าน ${ctx.storeName}${ctx.tagline ? ` (${ctx.tagline})` : ""} เจ้าของคือ${ctx.ownerName} · คนที่ตอบแชตอยู่คือผู้ช่วย AI ของร้าน ไม่ใช่คน`,
+    ...(focus
+      ? [
+          `สินค้าที่ลูกค้ากำลังดู: ${focus.name} ราคาปกติ ${formatBaht(focus.listPrice)} ต่อชิ้น${cheaperWays(focus)}`,
+        ]
+      : []),
+    ...(others.length ? [`สินค้า${focus ? "อื่น" : ""}ในร้าน: ${others.map((p) => p.name).join(" · ")} (ดูราคาได้จากปุ่มเลือกสินค้า)`] : []),
+    ...(card
+      ? [`ลูกค้ามีการ์ดข้อเสนอเปิดอยู่: ${card.offers.map((o) => `ข้อ ${o.id} ${o.label}`).join(" · ")} (ราคาอยู่ในการ์ด ชวนดูการ์ดแล้วกดยืนยันข้อที่สนใจ)`]
+      : []),
+    ...(ordered ? [`ลูกค้ายืนยันออเดอร์ข้อ ${ordered.id} (${ordered.label}) ไปแล้ว รายละเอียดอยู่ในใบสรุปในแชต`] : []),
+    "ผู้ช่วยทำได้: บอกราคา · คิดข้อเสนอให้เมื่อลูกค้าบอกจำนวนกับราคาที่อยากได้ · รับสั่งซื้อในแชต",
+    `เรื่องที่ไม่มีในข้อมูลนี้ (เช่น สเปกสินค้า ใช้กับรุ่นไหน ที่ตั้งร้าน เวลาเปิด) ผู้ช่วยไม่รู้ → บอกตรงๆ แล้ว${HUMAN(ctx.ownerName)}`,
+  ];
+  const offers = [...(card?.offers ?? []), ...(ordered ? [ordered] : [])];
   return {
-    template,
+    // GPT ช้า/ล่ม/ตรวจไม่ผ่าน → คำตอบสำรองที่อย่างน้อยเข้ากับเรื่องที่ลูกค้าพูด
+    template: smallTalkTemplate(ctx) ?? template,
     facts: {
-      ...base(ctx, product),
-      kind: "chat",
-      points: product
-        ? [`ผู้ช่วยของ${ctx.ownerName}ช่วยเรื่องราคาและสั่งซื้อ${product.name}`, `ราคาปกติ ${formatBaht(product.listPrice)} ต่อชิ้น`, "ชวนบอกจำนวนกับราคาที่อยากได้"]
-        : ["ผู้ช่วยช่วยเรื่องราคาและสั่งซื้อ", "ชวนเลือกสินค้าหรือบอกสินค้าที่สนใจ"],
-      askQuantity: !!product,
-      numbers: product ? [product.listPrice] : [],
+      buyerName: ctx.buyerName,
+      ownerName: ctx.ownerName,
+      ...(focus && { productName: focus.name }),
+      kind: "free",
+      points: knowledge,
+      askQuantity: false,
+      numbers: focus ? [focus.listPrice] : [],
+      letters: [...new Set(offers.map((o) => o.id))],
+      names: [...(focus ? [focus.name] : []), ...others.map((p) => p.name), ...offers.flatMap((o) => (o.bundle ? [o.bundle.name] : []))],
+      strict: true,
+      foreignNames: foreignWords(others, focus),
     },
   };
 }
 
-/** ถามเรื่องที่เถ้าแก่ยังไม่ได้ให้ข้อมูลไว้ */
-export function infoUnknownReply(ctx: Pick<Context, "buyerName" | "ownerName">, product: Product | undefined, template: string): FollowUpReply {
-  return {
-    template,
-    facts: {
-      ...base(ctx, product),
-      kind: "info_unknown",
-      points: ["เรื่องนี้ผู้ช่วยยังไม่มีข้อมูล ตอบเองไม่ได้", `${HUMAN(ctx.ownerName)} เพื่อถามเรื่องนี้`, "ผู้ช่วยช่วยได้เรื่องราคา สต๊อก การส่ง และการจ่ายเงิน"],
-      askQuantity: false,
-      numbers: [],
-    },
-  };
+/**
+ * ลูกค้าถามสเปก/การใช้งาน (ใช้กับรุ่นไหน ของแท้ไหม ชาร์จเร็วไหม ประกัน) — ร้านยังไม่มีข้อมูลสเปกในระบบ
+ * ตอบตายตัว ไม่ส่งให้ GPT: GPT ชอบตอบ "ใช้ได้ครับ" ทั้งที่ไม่มีข้อมูล และตัวตรวจแยกคำยืนยัน/ปฏิเสธในภาษาไทยได้ไม่แน่นอน
+ */
+export const SPEC_QUESTION =
+  /ใช้(?:ได้)?กับ|รองรับ|ของแท้|แท้(?:ไหม|มั้ย|หรือ|รึ|ป่าว|เปล่า)|ก็อป|สเปก|สเป็ค|spec|ชาร์จ(?:เร็ว|ไว)|กี่\s*(?:วัตต์|w\b|แอมป์)|ทน(?:ไหม|มั้ย|ทาน|มาก)|คุณภาพ|ประกัน|วัสดุ|ผลิต(?:จาก|ที่)/i;
+
+/** ถามราคาแต่ระบบไม่ได้มองเป็นการต่อราคา (GPT ติดป้าย "คำถาม") → ใช้คำตอบราคาตามจำนวนของระบบ ไม่ใช่คุยอิสระ (ที่ไม่มีตัวเลขขั้นราคา) */
+export const ASKS_PRICE =
+  /ราคา\s*(?:ส่ง|เท่า|ยังไง|ไง|ไหม|มั้ย|อะไร|เป็นไง|ต่อ|ล่ะ|หน่อย)|มีราคา|กี่บาท|(?:ชิ้น|อัน|เส้น|ตัว)ละเท่า|ขาย(?:เท่า|ยังไง|ไง)|ราคาเท่า/;
+
+/** ขอบคุณ/ชม ("ขอบคุณสำหรับราคาครับ") ไม่ใช่การถามราคา */
+export const THANKS_ONLY = /ขอบคุณ|ขอบใจ|thank/i;
+
+export function specQuestionText(ownerName: string, productName?: string): string {
+  return `เรื่องสเปกและการใช้งาน${productName ? `ของ${productName}` : "ของสินค้า"} ผู้ช่วยยังไม่มีข้อมูลครับ ${HUMAN(ownerName)}`;
+}
+
+/** คำในชื่อสินค้าอื่นที่ไม่มีในชื่อสินค้าที่คุยอยู่ ("พาวเวอร์แบงก์", "10000mAh") — พูดคำพวกนี้แล้วห้ามมีตัวเลขราคา */
+function foreignWords(others: Product[], focus: Product | undefined): string[] {
+  const own = new Set((focus?.name ?? "").split(/\s+/));
+  const words = others.flatMap((p) => p.name.split(/\s+/)).filter((w) => !own.has(w) && (w.length >= 4 || /\d/.test(w)));
+  return [...new Set(words)];
+}
+
+const GREETING = /^\s*(?:สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|ดีจ้า|hello|hi\b)/i;
+const THANKS = /ขอบคุณ|ขอบใจ|thank/i;
+const ASKS_BOT = /บอท|bot\b|หุ่นยนต์|เอไอ|\bAI\b|เป็นคน(?:จริง)?(?:หรือ|ไหม|มั้ย|รึ)|ใช่คน(?:จริง)?(?:ไหม|มั้ย|รึ|หรือ)|คนตอบ(?:ไหม|มั้ย|หรือ)/i;
+const ASKS_PLACE_TIME = /ที่ไหน|อยู่ไหน|ที่อยู่|แผนที่|โลเคชั่น|โลเคชัน|location|กี่โมง|เปิด(?:กี่|วัน|ทุก)|ปิด(?:กี่|วัน)|หน้าร้าน/i;
+
+/** คำตอบสำรองของคุยอิสระ (ไม่ผ่าน GPT) — null = ใช้ template เดิมของระบบ */
+function smallTalkTemplate(ctx: FreeChatContext): string | null {
+  const text = ctx.text ?? "";
+  const invite = ctx.focus ? `สนใจ${ctx.focus.name} บอกจำนวนกับราคาที่อยากได้มาได้เลยครับ` : "บอกสินค้าที่สนใจมาได้เลยครับ";
+  if (ASKS_BOT.test(text)) return `ผมเป็นผู้ช่วย AI ของ${ctx.ownerName}ครับ ถ้าอยากคุยกับ${ctx.ownerName}เอง ${HUMAN(ctx.ownerName)}`;
+  if (ASKS_PLACE_TIME.test(text)) return `เรื่องนี้ผู้ช่วยยังไม่มีข้อมูลครับ ${HUMAN(ctx.ownerName)}`;
+  if (THANKS.test(text)) return `ยินดีครับ${ctx.buyerName} มีอะไรสงสัยถามเพิ่มได้เลยครับ`;
+  if (GREETING.test(text)) return `สวัสดีครับ${ctx.buyerName} ผมเป็นผู้ช่วย AI ของ${ctx.ownerName}ครับ ${invite}`;
+  return null;
+}
+
+/** มีทางได้ราคาดีกว่าราคาปกติไหม (บอกว่ามี แต่ไม่ให้ตัวเลข — ตัวเลขให้ระบบคิดตอนลูกค้าบอกจำนวน) */
+function cheaperWays(product: Product): string {
+  const guide = priceGuide(product);
+  const ways = [...(guide.tiers.length ? ["ราคาส่งตามจำนวน"] : []), ...(guide.cashPrice !== null ? ["ราคาโอนทันที"] : [])];
+  return ways.length ? ` · มี${ways.join("และ")}ที่ถูกกว่านี้ (ถ้าลูกค้าสนใจ ชวนบอกจำนวนที่ต้องการ แล้วระบบจะคิดราคาให้)` : "";
 }
 
 /** บทสนทนาล่าสุดให้ GPT (ข้อความลูกค้าตอนนี้อยู่ท้าย) + ข้อความที่ร้านเพิ่งตอบ (ห้ามซ้ำ) */

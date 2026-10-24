@@ -200,7 +200,52 @@ export type ChatTextFacts = {
   required?: number[];
   /** คำที่ต้องมี (แต่ละข้อ = ทางเลือกคั่นด้วย |) เช่น ขอโทษ|ขออภัย ตอนลูกค้าหงุดหงิด */
   requiredWords?: string[];
+  /** คุยอิสระ: GPT เลือกเองว่าจะพูดอะไร → ตรวจเข้มขึ้น (ดู FREE_OFF_LIMITS) */
+  strict?: boolean;
+  /** สินค้าอื่นที่ไม่ได้ให้ราคาไว้ — ข้อความที่พูดชื่อสินค้าพวกนี้ห้ามมีตัวเลข (กันเอาราคาสินค้าที่คุยอยู่ไปพูดเป็นราคาของตัวอื่น) */
+  foreignNames?: string[];
 };
+
+// ขนาด/กำลังไฟในชื่อสินค้า ("1 เมตร", "20W") — พูดถึงได้แม้พูดแยกจากชื่อ ("สายยาว 1 เมตรครับ")
+const MEASURE = /(\d+(?:\.\d+)?)\s*(เมตร|ม\.|m|ซม\.?|cm|มม\.?|mm|W|วัตต์|mAh|A|แอมป์)(?![A-Za-z])/gi;
+const UNIT_GROUPS: [RegExp, string][] = [
+  [/^(?:เมตร|ม\.|m)$/i, "(?:เมตร|ม\\.|m)"],
+  [/^(?:ซม\.?|cm)$/i, "(?:ซม\\.?|cm|เซนติเมตร|เซน)"],
+  [/^(?:มม\.?|mm)$/i, "(?:มม\\.?|mm|มิลลิเมตร)"],
+  [/^(?:W|วัตต์)$/i, "(?:W|วัตต์)"],
+  [/^mAh$/i, "mAh"],
+  [/^(?:A|แอมป์)$/i, "(?:A|แอมป์)"],
+];
+
+/** ลบขนาดที่มาจากชื่อสินค้าออกจากข้อความ (เลขพวกนี้ไม่ใช่ราคา) */
+function withoutMeasures(t: string, names: string[]): string {
+  let out = t;
+  for (const name of names) {
+    for (const m of normalize(name).matchAll(MEASURE)) {
+      const group = UNIT_GROUPS.find(([re]) => re.test(m[2]))?.[1];
+      if (!group) continue;
+      // หลัง ฿ = ราคา ไม่ใช่ขนาด ("฿20 W" ไม่ผ่าน)
+      out = out.replace(new RegExp(`(?<![\\d.]|฿\\s*)${m[1].replace(".", "\\.")}\\s*${group}(?![A-Za-z])`, "gi"), " ");
+    }
+  }
+  return out;
+}
+
+// คุยอิสระเท่านั้น: ร้านไม่ได้ให้ข้อมูลสเปก/ส่วนลด/การส่ง/สต๊อกไว้ในทางนี้ → คำพวกนี้ไม่ผ่านเลย ไม่ว่าจะพูดแบบยืนยันหรือปฏิเสธ
+// (ข้อความไทยไม่เว้นวรรค แยก "ของแท้ครับ" กับ "ไม่แน่ใจว่าของแท้ไหม" ด้วย regex ได้ไม่แน่นอน · คำถามสเปก pipeline ตอบตายตัวก่อนถึง GPT อยู่แล้ว)
+// รวมราคาต่อหน่วยอื่น ("฿150 ต่อโหล") — ราคาปกติคือราคาต่อชิ้นเท่านั้น
+const FREE_OFF_LIMITS = new RegExp(
+  [
+    // สเปก/คุณภาพ
+    "แท้|ทุกรุ่น|ทน(?:ทาน|มาก)|คุณภาพ|รับรอง|มอก|ชาร์จ(?:เร็ว|ไว)|รองรับ|ใช้(?:ได้)?กับ|ใช้ได้|เสียบ",
+    // ราคา/ส่วนลด/ตกลง (ราคาใหม่ต้องผ่านระบบคิดราคา)
+    "ลด|ถูก(?:กว่า|ลง)|ราคาพิเศษ|ต่อรอง|ตกลง|จัดให้|ราคา(?:นั้น|นี้)ได้|ครึ่งนึง|แถม",
+    // การส่ง/สต๊อก/การจ่าย/คืนของ (คำตอบมาจากที่เถ้าแก่กรอกในทางอื่นเท่านั้น)
+    "พร้อมส่ง|ส่ง(?:ของ|เลย|ได้|พรุ่งนี้|วันนี้|ทัน)|ได้ของ|พรุ่งนี้|วันนี้|ภายใน|มีของ|ของมี|ของเยอะ|ไม่หมด|สต๊อก|สต็อก|ปลายทาง|ผ่อน|เครดิต|เปลี่ยน|คืน",
+    // ราคาต่อหน่วยอื่น — ราคาปกติคือราคาต่อชิ้นเท่านั้น
+    "(?:ต่อ|/)\\s*(?:โหล|แพ็?ค|กล่อง|ลัง|ชุด|คู่|ม้วน|เมตร)|(?:โหล|แพ็?ค|กล่อง|ลัง|ชุด|คู่|ม้วน)ละ",
+  ].join("|"),
+);
 
 // คำที่ห้ามในข้อความทั่วไป = ห้ามสัญญา/ข้อมูลหลังบ้านแบบเดียวกับการ์ด แต่ "ลดเพิ่มไม่ได้" (ปฏิเสธ) พูดได้
 const FORBIDDEN_CHAT =
@@ -225,8 +270,12 @@ export function validateChatText(raw: string, facts: ChatTextFacts): Validation 
   }
   let t = normalize(text);
   for (const name of facts.names) if (name.trim()) t = t.split(normalize(name)).join(" ");
+  if (facts.strict && FREE_OFF_LIMITS.test(t)) return { ok: false, reason: "claim" };
+  t = withoutMeasures(t, facts.names);
   const said = numbersIn(t);
   for (const n of said) if (!facts.numbers.includes(n)) return fail("chat", n);
+  const foreign = facts.foreignNames?.find((name) => name.trim() && normalize(text).includes(normalize(name)));
+  if (foreign && said.length > 0) return fail("foreign", said[0]);
   for (const n of facts.required ?? []) if (!said.includes(n)) return { ok: false, reason: `number:missing:${n}` };
   for (const words of facts.requiredWords ?? []) {
     if (!words.split("|").some((w) => text.includes(w))) return { ok: false, reason: `number:missing:${words}` };

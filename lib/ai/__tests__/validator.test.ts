@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_OFFERS } from "@/lib/chat/mock-offers";
-import { assembleReply, validateDraft, type ReplyDraft, type ReplyFacts } from "../validator";
+import { assembleReply, validateChatText, validateDraft, type ChatTextFacts, type ReplyDraft, type ReplyFacts } from "../validator";
 
 // ข้อเสนอตัวอย่าง SKILL: A 1,500 × ฿130 = ฿195,000 เครดิต 30 วัน · B ฿135 จ่ายสด · C ฿145 + หัวชาร์จ 20W 200 ชิ้น
 const facts: ReplyFacts = {
@@ -196,5 +196,73 @@ describe("รีวิวรอบ 3 — คำสัญญาที่ยัง
     "ซื้อ 1,500 ชิ้น ฿130 ลดอีกห้า",
   ])('"%s" → ไม่ผ่าน', (text) => {
     expect(check(option("A", text)).ok).toBe(false);
+  });
+});
+
+// คุยอิสระ (25 ต.ค. 2569): GPT ตอบตรงคำถามเอง — พูดตัวเลขได้แค่ราคาปกติ + ขนาดในชื่อสินค้า
+// และห้ามพูดเรื่องสเปก/ส่วนลด/การส่ง/สต๊อกเลย (ไม่มีข้อมูลในทางนี้ และแยกคำยืนยัน/ปฏิเสธภาษาไทยด้วย regex ไม่ได้แน่นอน)
+describe("validateChatText — คุยอิสระ (strict)", () => {
+  const free: ChatTextFacts = { numbers: [150], letters: [], names: ["สายชาร์จ Type-C 1 เมตร"], strict: true };
+  const ok = (text: string, facts: ChatTextFacts = free) => validateChatText(text, facts);
+
+  it.each([
+    "สวัสดีครับ ผมเป็นผู้ช่วย AI ของเฮียชัยครับ",
+    "สายยาว 1 เมตรครับ ราคาปกติ ฿150 ต่อชิ้นครับ",
+    "สายยาว 1 ม. ครับ",
+    "ยาว 1m ครับ",
+    "ราคามาตรฐาน ฿150 ครับ",
+    'ที่ตั้งร้านผมยังไม่มีข้อมูลครับ กด "คุยกับคนจริง" ที่หัวแชตได้เลยครับ',
+  ])('"%s" → ผ่าน', (text) => {
+    expect(ok(text)).toEqual({ ok: true });
+  });
+
+  it.each([
+    ["สายยาว 2 เมตรครับ", "number:chat:2"],
+    ["฿1 m ครับ", "number:chat:1"],
+    ["500 ชิ้นขึ้นไป ฿125 ครับ", "number:chat:500"],
+    ["ราคาส่ง ฿140 ครับ", "number:chat:140"],
+    ["ของแท้ครับ ราคา ฿150 ครับ", "claim"],
+    ["สินค้าเราแท้ครับ", "claim"],
+    ["ชาร์จเร็วครับ", "claim"],
+    ["เรื่องชาร์จเร็วผมยังไม่มีข้อมูลครับ", "claim"],
+    ["ใช้ได้ทุกรุ่นครับ", "claim"],
+    ["iPhone ใช้ได้ครับ", "claim"],
+    ["รองรับ iPhone ครับ", "claim"],
+    ["ทนมากครับ", "claim"],
+    ["เดี๋ยวลดให้ครับ", "claim"],
+    ["ให้ราคาพิเศษครับ", "claim"],
+    ["พรุ่งนี้ส่งเลยครับ", "claim"],
+    ["มีของพร้อมส่งเยอะครับ", "claim"],
+    ["฿150 ต่อโหลครับ", "claim"],
+    ["โหลละ ฿150 ครับ", "claim"],
+    ["฿150 ต่อคู่ครับ", "claim"],
+    ["เดี๋ยวลดราคาให้ครับ", "claim"],
+    ["ถูกกว่านี้ได้ครับ", "claim"],
+    ["ตกลงครับ ราคานั้นได้เลยครับ", "claim"],
+    ["ได้ครับ จัดให้ครับ", "claim"],
+    ["แถมหัวชาร์จให้ด้วยครับ", "claim"],
+    ["ได้ของพรุ่งนี้ครับ", "claim"],
+    ["เก็บเงินปลายทางได้ครับ", "claim"],
+    ["ให้เครดิตได้ครับ", "claim"],
+    ["เปลี่ยนได้ครับ", "claim"],
+    ["ของเยอะครับ ไม่หมดแน่นอน", "claim"],
+  ])('"%s" → ไม่ผ่าน (%s)', (text, reason) => {
+    expect(ok(text)).toEqual({ ok: false, reason });
+  });
+
+  it("คำต้องห้ามที่อยู่ในชื่อสินค้าเอง ไม่นับ (ตัดชื่อออกก่อนตรวจ)", () => {
+    expect(ok("หัวชาร์จเร็ว 20W ราคา ฿50 ครับ", { numbers: [50], letters: [], names: ["หัวชาร์จเร็ว 20W"], strict: true })).toEqual({ ok: true });
+  });
+
+  it("ราคาปกติของสินค้าที่คุยอยู่ ห้ามไปพูดคู่กับชื่อสินค้าอื่น", () => {
+    const multi: ChatTextFacts = { ...free, names: [...free.names, "พาวเวอร์แบงก์ 10000mAh"], foreignNames: ["พาวเวอร์แบงก์", "10000mAh"] };
+    expect(ok("พาวเวอร์แบงก์ 10000mAh ราคา ฿150 ครับ", multi)).toEqual({ ok: false, reason: "number:foreign:150" });
+    expect(ok("พาวเวอร์แบงก์ ราคา ฿150 ครับ", multi)).toEqual({ ok: false, reason: "number:foreign:150" });
+    expect(ok("ตัว 10000mAh ราคา ฿150 ครับ", multi)).toEqual({ ok: false, reason: "number:foreign:150" });
+    expect(ok("มีพาวเวอร์แบงก์ 10000mAh ด้วยครับ ดูราคาได้จากปุ่มเลือกสินค้าครับ", multi)).toEqual({ ok: true });
+  });
+
+  it("ข้อความแบบอื่น (ไม่ strict) ไม่เปลี่ยนจากเดิม", () => {
+    expect(ok("ของแท้ครับ ราคา ฿150 ครับ", { ...free, strict: undefined })).toEqual({ ok: true });
   });
 });
