@@ -5,12 +5,14 @@ import merchant from "./merchant.json";
 import type { Storefront } from "@/lib/chat/types";
 
 // ค่าใน [วงเล็บเหลี่ยม] คือ placeholder จากดีไซน์ ต้องให้ทีมใส่ข้อมูลจริง ห้ามแต่งเอง
+// บัญชี/ช่องทางติดต่อเป็นค่าเดโม (ทีมให้ใส่เอง 24 ต.ค. 2569): ปิดเลขบัญชีแบบสลิป และไม่ใส่ LINE ID จริง
+// กันไปตรงกับบัญชีหรือ LINE ของคนอื่น แล้วมีคนโอนหรือแอดจริง — ร้านจริงต้องเปลี่ยนเป็นของตัวเอง
 export const storefront: Storefront = {
   storeName: merchant.merchantName,
   tagline: "ขายส่งอุปกรณ์มือถือ",
   ownerName: merchant.ownerDisplayName,
   assistantName: `ผู้ช่วย AI ของ${merchant.ownerDisplayName}`,
-  bankAccountName: "[ชื่อบัญชีร้าน]",
-  contactChannel: "[ช่องทางติดต่อของร้าน]",
+  bankAccountName: `กสิกรไทย xxx-x-x5678-x ${merchant.merchantName}`,
+  contactChannel: `LINE ${merchant.merchantName}`,
   orderRefPlaceholder: "[เลขออเดอร์]",
 };
