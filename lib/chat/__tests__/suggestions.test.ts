@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_OFFERS } from "../mock-offers";
-import { deriveSuggestions } from "../suggestions";
-import type { ChatMessage } from "../types";
+import { deriveSuggestions, lastAskedPrice } from "../suggestions";
+import type { ChatMessage, PublicProduct } from "../types";
 
 const at = "2026-10-23T14:30:00Z";
 const greeting: ChatMessage = { id: "g", at, type: "ai_text", text: "สวัสดีครับ", cta: "open_products" };
@@ -42,5 +42,20 @@ describe("deriveSuggestions", () => {
 
   it("ส่งเรื่องให้เถ้าแก่แล้ว → ไม่มี chip", () => {
     expect(deriveSuggestions([greeting], "human")).toEqual([]);
+  });
+});
+
+describe("lastAskedPrice — ราคาต่อชิ้นล่าสุดที่ลูกค้าขอในรอบต่อรองนี้", () => {
+  const products: PublicProduct[] = [{ sku: "CBL-C-1M", name: "สายชาร์จ", listPrice: 150 }];
+  const buyer = (id: string, text: string): ChatMessage => ({ id, at, type: "buyer_text", text, inputMode: "text" });
+
+  it("เอาราคาล่าสุด · ข้อความที่ไม่มีราคา (\"ไม่ซื้อเพิ่ม\") ไม่ล้างราคาที่ขอไว้", () => {
+    const messages = [buyer("b1", "ขอ 125 ได้ไหม 1000 ชิ้น"), offers, buyer("b2", "ขอ 120 ได้ไหม"), buyer("b3", "ไม่ซื้อเพิ่มครับ")];
+    expect(lastAskedPrice(messages, products, "CBL-C-1M")).toBe(120);
+  });
+
+  it("นับเฉพาะหลังออเดอร์ล่าสุด · ไม่เคยขอ = null", () => {
+    const summary: ChatMessage = { id: "s", at, type: "order_summary", orderId: "1", offer: MOCK_OFFERS[0], productName: "x" };
+    expect(lastAskedPrice([buyer("b1", "ขอ 125 ได้ไหม"), summary, buyer("b2", "สวัสดีครับ")], products, "CBL-C-1M")).toBeNull();
   });
 });

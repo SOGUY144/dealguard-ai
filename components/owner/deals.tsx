@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Offer } from "@/lib/chat/types";
 import { formatBaht, formatClock, formatQty } from "@/lib/format";
 import type { OwnerDeal } from "@/lib/owner/summary";
+import { OrderActions, type ConfirmOrder } from "./order-actions";
 import { PaidToggle, type MarkPaid } from "./paid-toggle";
 
 /** "+฿20,000" · ติดลบแสดง "−฿…" */
@@ -21,8 +22,11 @@ function Letter({ id }: { id: Offer["id"] }) {
   );
 }
 
-/** ดีลที่ AI ปิดได้ — คอม = ตาราง (ไม่มีคอลัมน์ Deal score) · มือถือ = รายการ · markPaid = มีคอลัมน์การชำระ + ปุ่มได้รับเงินแล้ว */
-export function Deals({ deals, markPaid }: { deals: OwnerDeal[]; markPaid?: MarkPaid }) {
+/**
+ * ดีลที่ AI ปิดได้ — คอม = ตาราง (ไม่มีคอลัมน์ Deal score) · มือถือ = รายการ
+ * markPaid = มีคอลัมน์สถานะ + ปุ่มได้รับเงินแล้ว · confirm ด้วย = ปุ่มยืนยันออเดอร์ก่อน (รอยืนยัน → รอชำระ → ชำระแล้ว)
+ */
+export function Deals({ deals, markPaid, confirm }: { deals: OwnerDeal[]; markPaid?: MarkPaid; confirm?: ConfirmOrder }) {
   const latestFirst = [...deals].reverse();
   return (
     <section
@@ -59,7 +63,7 @@ export function Deals({ deals, markPaid }: { deals: OwnerDeal[]; markPaid?: Mark
                   </th>
                   {markPaid && (
                     <th scope="col" className="border-b border-line-soft px-3.5 py-[13px] text-left font-medium whitespace-nowrap">
-                      การชำระ
+                      สถานะ
                     </th>
                   )}
                 </tr>
@@ -80,7 +84,7 @@ export function Deals({ deals, markPaid }: { deals: OwnerDeal[]; markPaid?: Mark
                     <td className="text-right font-bold text-accent-ink">{signedBaht(d.recoveredMargin)}</td>
                     {markPaid && (
                       <td>
-                        <PaidToggle orderId={d.id} buyerName={d.buyerName} paidAt={d.paidAt} markPaid={markPaid} />
+                        <Status deal={d} markPaid={markPaid} confirm={confirm} />
                       </td>
                     )}
                   </tr>
@@ -106,7 +110,7 @@ export function Deals({ deals, markPaid }: { deals: OwnerDeal[]; markPaid?: Mark
                 <span className="text-right text-xs text-muted">{formatBaht(d.offer.total)}</span>
                 {markPaid && (
                   <span className="col-start-2 col-end-4 pt-1">
-                    <PaidToggle orderId={d.id} buyerName={d.buyerName} paidAt={d.paidAt} markPaid={markPaid} />
+                    <Status deal={d} markPaid={markPaid} confirm={confirm} />
                   </span>
                 )}
               </li>
@@ -115,5 +119,20 @@ export function Deals({ deals, markPaid }: { deals: OwnerDeal[]; markPaid?: Mark
         </>
       )}
     </section>
+  );
+}
+
+/** มีปุ่มยืนยัน → ทีละขั้นตามสถานะ · ไม่มี → ปุ่มได้รับเงินแบบเดิม */
+export function Status({ deal: d, markPaid, confirm }: { deal: OwnerDeal; markPaid: MarkPaid; confirm?: ConfirmOrder }) {
+  if (!confirm) return <PaidToggle orderId={d.id} buyerName={d.buyerName} paidAt={d.paidAt} markPaid={markPaid} />;
+  return (
+    <OrderActions
+      orderId={d.id}
+      buyerName={d.buyerName}
+      confirmedAt={d.confirmedAt}
+      paidAt={d.paidAt}
+      confirm={confirm}
+      markPaid={markPaid}
+    />
   );
 }

@@ -21,6 +21,11 @@ describe("getMockOrder", () => {
     expect(getMockOrder("demo-C")?.offer.lever).toBe("bundle");
     expect(getMockOrder("nope")).toBeUndefined();
   });
+
+  it("ออเดอร์เดโมถือว่าร้านยืนยันแล้ว (หน้าเดโมเห็น QR เลย)", () => {
+    const demo = getMockOrder("demo-A")!;
+    expect(demo.confirmedAt).toBe(demo.at);
+  });
 });
 
 describe("OrderReceipt (Mobile-Order)", () => {
@@ -57,20 +62,31 @@ describe("OrderReceipt — ส่วนชำระเงิน", () => {
     id: "o-1",
     productName: "สายชาร์จ",
     at: "2026-10-25T03:00:00.000Z",
+    confirmedAt: "2026-10-25T03:20:00.000Z",
     paidAt: null,
     offer: { id: "A" as const, lever: "list" as const, label: "ราคาที่เถ้าแก่อนุมัติ", pricePerUnit: 125, qty: 1000, conditionText: "1,000 ชิ้น · เครดิต 7 วัน", total: 125_000, creditDays: 7 },
   };
-  const payment = (patch: Partial<{ mode: "promptpay" | "demo"; paidAt: string | null }> = {}) => ({
+  const payment = (patch: Partial<{ mode: "promptpay" | "demo"; confirmedAt: string | null; paidAt: string | null }> = {}) => ({
     qrSvg: "<svg></svg>",
     mode: "promptpay" as const,
     dueAt: "2026-11-01T03:00:00.000Z",
+    confirmedAt: "2026-10-25T03:20:00.000Z",
     paidAt: null,
     ...patch,
   });
 
-  it("ยังไม่จ่าย (พร้อมเพย์จริง): วันครบกำหนด · QR พร้อมยอด · รอร้านยืนยัน · ไม่มีปุ่มจำลอง", () => {
+  it("ร้านยังไม่ยืนยันออเดอร์: บอกว่ารอร้านยืนยัน · ยังไม่มี QR (ร้านเช็กของก่อนรับเงิน)", () => {
+    render(<OrderReceipt order={order} storefront={storefront} payment={payment({ confirmedAt: null })} />);
+    const section = screen.getByRole("region", { name: "ชำระเงิน" });
+    expect(within(section).getByRole("status")).toHaveTextContent("รอร้านยืนยันออเดอร์");
+    expect(section).toHaveTextContent("QR สำหรับจ่ายจะขึ้นตรงนี้เมื่อร้านยืนยัน");
+    expect(within(section).queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("ร้านยืนยันแล้ว ยังไม่จ่าย (พร้อมเพย์จริง): วันครบกำหนด · QR พร้อมยอด · รอร้านยืนยันการชำระ · ไม่มีปุ่มจำลอง", () => {
     render(<OrderReceipt order={order} storefront={storefront} payment={payment()} />);
     const section = screen.getByRole("region", { name: "ชำระเงิน" });
+    expect(section).toHaveTextContent("ร้านยืนยันออเดอร์แล้ว");
     expect(section).toHaveTextContent("ชำระภายใน 1 พ.ย. 2569");
     expect(within(section).getByRole("img", { name: "QR พร้อมเพย์ ยอด ฿125,000" })).toBeInTheDocument();
     expect(section).toHaveTextContent("รอร้านยืนยันการชำระ");

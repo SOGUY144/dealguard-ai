@@ -21,5 +21,5 @@ export async function paymentFor(order: OrderView, promptPayId = process.env.PRO
     color: { dark: "#1E1B2E", light: "#FFFFFF" },
   });
   const dueAt = order.offer.creditDays > 0 ? new Date(Date.parse(order.at) + order.offer.creditDays * DAY_MS).toISOString() : null;
-  return { qrSvg, mode: real ? "promptpay" : "demo", dueAt, paidAt: order.paidAt };
+  return { qrSvg, mode: real ? "promptpay" : "demo", dueAt, confirmedAt: order.confirmedAt, paidAt: order.paidAt };
 }

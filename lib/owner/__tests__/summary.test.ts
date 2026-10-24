@@ -9,6 +9,8 @@ import {
   groupDealsByDay,
   parseDealRange,
   escalationLabel,
+  groupOrders,
+  orderStatus,
   ownerInitials,
   summarize,
   thaiDate,
@@ -18,6 +20,7 @@ import {
 // ตัวเลขตัวอย่างจาก SKILL §6.5 (ขอ ฿125 × 1,000 → ยอมลดได้กำไร ฿25,000)
 const deal = (letter: 0 | 1 | 2, marginOffer: number, at: string): OwnerDeal => ({
   paidAt: null,
+  confirmedAt: null,
   id: `o${letter}`,
   at,
   buyerName: "คุณนก",
@@ -138,5 +141,33 @@ describe("ช่วงวันของหน้าดีลทั้งหม�
       ["24 ต.ค. 2569", ["c", "b"]],
       ["23 ต.ค. 2569", ["a"]],
     ]);
+  });
+});
+
+describe("สถานะออเดอร์: รอยืนยัน → รอชำระ → ชำระแล้ว", () => {
+  it("ยังไม่ยืนยัน = รอยืนยัน · ยืนยันแล้ว = รอชำระ · ได้รับเงินแล้ว = ชำระแล้ว", () => {
+    expect(orderStatus({ confirmedAt: null, paidAt: null })).toBe("pending");
+    expect(orderStatus({ confirmedAt: "2026-10-25T03:00:00.000Z", paidAt: null })).toBe("awaiting_payment");
+    expect(orderStatus({ confirmedAt: "2026-10-25T03:00:00.000Z", paidAt: "2026-10-25T04:00:00.000Z" })).toBe("paid");
+  });
+
+  it("ได้รับเงินแล้วนับเป็นชำระแล้ว แม้ข้อมูลยืนยันจะไม่มี (ข้อมูลเก่า)", () => {
+    expect(orderStatus({ confirmedAt: null, paidAt: "2026-10-25T04:00:00.000Z" })).toBe("paid");
+  });
+
+  it("แยกออเดอร์เป็น 3 กลุ่ม ล่าสุดก่อนในแต่ละกลุ่ม", () => {
+    const base = deal(0, 45_000, "2026-10-24T03:00:00Z");
+    const o = (id: string, at: string, confirmedAt: string | null, paidAt: string | null) => ({ ...base, id, at, confirmedAt, paidAt });
+    const groups = groupOrders([
+      o("p1", "2026-10-24T01:00:00Z", null, null),
+      o("w1", "2026-10-24T02:00:00Z", "2026-10-24T02:05:00Z", null),
+      o("p2", "2026-10-24T03:00:00Z", null, null),
+      o("d1", "2026-10-24T04:00:00Z", "2026-10-24T04:05:00Z", "2026-10-24T05:00:00Z"),
+    ]);
+    expect({
+      pending: groups.pending.map((d) => d.id),
+      awaiting: groups.awaiting.map((d) => d.id),
+      paid: groups.paid.map((d) => d.id),
+    }).toEqual({ pending: ["p2", "p1"], awaiting: ["w1"], paid: ["d1"] });
   });
 });

@@ -53,6 +53,9 @@ export const connectOwnerDashboard = connect("owner-dashboard", [
   { table: "messages", event: "INSERT" },
 ]);
 
+/** ทุกหน้าเถ้าแก่ (การแจ้งเตือน): ลูกค้าปิดดีลใหม่ / ยืนยันออเดอร์หรือรับเงินจากอีกแท็บ */
+export const connectOwnerOrders = connect("owner-orders", [{ table: "orders", event: "*" }]);
+
 /** แชตหนึ่งห้อง (ทั้งฝั่งลูกค้าและเถ้าแก่): ข้อความใหม่ / โหมดเปลี่ยน */
 export function connectChat(chatId: string): ConnectLive {
   return connect(`chat-${chatId}`, [

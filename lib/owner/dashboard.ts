@@ -8,10 +8,12 @@ import {
   activeChatStatus,
   bangkokDayStart,
   chatPreview,
+  groupOrders,
   type ActiveChat,
   type EscalationEntry,
   type OwnerDeal,
   type OwnerEscalation,
+  type PendingOrder,
 } from "./summary";
 
 type Row = Record<string, unknown>;
@@ -24,6 +26,8 @@ const ESCALATION_LIST_LIMIT = 20;
 /** หน้าดีลทั้งหมด / รอตัดสิน แสดงได้มากสุด (ร้านเดียวในเดโม พอเหลือ) */
 const DEAL_HISTORY_LIMIT = 1000;
 const ESCALATION_HISTORY_LIMIT = 200;
+/** ออเดอร์รอยืนยันที่การแจ้งเตือนอ่านได้มากสุด */
+const PENDING_ORDER_LIMIT = 20;
 /** แชตที่กำลังคุยที่แสดงในหน้าภาพรวม */
 const ACTIVE_CHAT_LIMIT = 8;
 /** ข้อความล่าสุดต่อแชตที่ใช้ดูสถานะ/ตัวอย่างข้อความ */
@@ -74,12 +78,55 @@ export async function readDeals(
   db: SupabaseClient,
   since: string | null,
 ): Promise<{ deals: OwnerDeal[]; incompleteDeals: number }> {
+  return queryDeals(db, { since });
+}
+
+/** แท็บออเดอร์และชำระเงิน: รอยืนยัน/รอชำระทุกวัน (งานค้างต้องไม่หายข้ามวัน) + ชำระแล้ววันนี้ */
+export async function readOrderBoard(db: SupabaseClient, now = new Date()): Promise<ReturnType<typeof groupOrders>> {
+  const { deals } = await queryDeals(db, { unpaidOrPaidSince: bangkokDayStart(now).toISOString() });
+  return groupOrders(deals);
+}
+
+/** ลูกค้าปิดดีลแล้วรอเถ้าแก่ยืนยัน ล่าสุดก่อน — การแจ้งเตือนบนจอเถ้าแก่ (ไม่มี margin) */
+export async function readPendingOrders(db: SupabaseClient): Promise<PendingOrder[]> {
+  const res = await db
+    .from("orders")
+    .select("id, chat_id, created_at, product_name, profiles!inner(display_name, role), offers(*)")
+    .eq("profiles.role", "buyer")
+    .is("confirmed_at", null)
+    .is("paid_at", null)
+    .order("created_at", { ascending: false })
+    .limit(PENDING_ORDER_LIMIT);
+  if (res.error) throw new Error(`[owner] อ่านออเดอร์รอยืนยัน: ${res.error.message}`);
+  return (res.data as Row[]).flatMap((row) => {
+    const offerRow = one(row.offers);
+    if (!offerRow) return [];
+    return [
+      {
+        id: String(row.id),
+        chatId: String(row.chat_id),
+        at: new Date(String(row.created_at)).toISOString(),
+        buyerName: String(one(row.profiles)?.display_name ?? "ลูกค้า"),
+        productName: String(row.product_name),
+        offer: toOffer(offerRow),
+      },
+    ];
+  });
+}
+
+async function queryDeals(
+  db: SupabaseClient,
+  where: { since: string | null } | { unpaidOrPaidSince: string },
+): Promise<{ deals: OwnerDeal[]; incompleteDeals: number }> {
   let query = db
     .from("orders")
     // เฉพาะออเดอร์ของบัญชีลูกค้า — เถ้าแก่/กรรมการลองสั่งเองจากหน้าลูกค้าไม่นับเป็นดีลของ AI
-    .select("id, chat_id, created_at, paid_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))")
+    .select(
+      "id, chat_id, created_at, confirmed_at, paid_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))",
+    )
     .eq("profiles.role", "buyer");
-  if (since) query = query.gte("created_at", since);
+  if ("unpaidOrPaidSince" in where) query = query.or(`paid_at.is.null,paid_at.gte.${where.unpaidOrPaidSince}`);
+  else if (where.since) query = query.gte("created_at", where.since);
   // ล่าสุดก่อนแล้วกลับลำดับ — เกินเพดานแล้วตัดของเก่าทิ้ง ไม่ใช่ตัดของใหม่
   const orders = await query.order("created_at", { ascending: false }).limit(DEAL_HISTORY_LIMIT);
   if (orders.error) throw new Error(`[owner] อ่านออเดอร์: ${orders.error.message}`);
@@ -106,6 +153,7 @@ export async function readDeals(
       marginIfConceded: Number(econ.margin_if_conceded),
       marginOffer: Number(econ.margin_offer),
       recoveredMargin: Number(econ.recovered_margin),
+      confirmedAt: row.confirmed_at ? new Date(String(row.confirmed_at)).toISOString() : null,
       paidAt: row.paid_at ? new Date(String(row.paid_at)).toISOString() : null,
     });
   }

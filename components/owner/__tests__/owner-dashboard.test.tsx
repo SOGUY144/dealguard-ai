@@ -7,6 +7,7 @@ import { summarize } from "@/lib/owner/summary";
 import { ActiveChats } from "../active-chats";
 import { Deals, signedBaht } from "../deals";
 import { Escalations } from "../escalations";
+import { PendingCountContext } from "../order-alerts";
 import { OwnerBottomNav, OwnerSidebar } from "../owner-nav";
 import { ProfitChart } from "../profit-chart";
 import { StatTiles } from "../stat-tiles";
@@ -21,6 +22,7 @@ const deals: OwnerDeal[] = [45_000, 36_332, 42_000].map((marginOffer, i) => ({
   marginIfConceded: 25_000,
   marginOffer,
   recoveredMargin: marginOffer - 25_000,
+  confirmedAt: null,
   paidAt: null,
 }));
 
@@ -55,12 +57,25 @@ describe("Deals", () => {
     expect(rows[2]).toHaveTextContent("+฿20,000");
   });
 
-  it("มีปุ่มชำระเงิน → ทุกแถวบอกสถานะ รอชำระ / ชำระแล้ว", () => {
-    const withPaid = deals.map((d, i) => ({ ...d, paidAt: i === 0 ? "2026-10-24T05:00:00.000Z" : null }));
-    render(<Deals deals={withPaid} markPaid={async () => ({ ok: true as const, paidAt: null })} />);
+  it("มีปุ่มจัดการออเดอร์ → ทุกแถวบอกสถานะ รอยืนยัน / รอชำระ / ชำระแล้ว", () => {
+    const confirmedAt = "2026-10-24T04:30:00.000Z";
+    const withStatus = [
+      { ...deals[0], confirmedAt, paidAt: "2026-10-24T05:00:00.000Z" },
+      { ...deals[1], confirmedAt, paidAt: null },
+      { ...deals[2], confirmedAt: null, paidAt: null },
+    ];
+    render(
+      <Deals
+        deals={withStatus}
+        confirm={async () => ({ ok: true as const, confirmedAt })}
+        markPaid={async () => ({ ok: true as const, paidAt: null, confirmedAt })}
+      />,
+    );
+    expect(within(screen.getByRole("table")).getByRole("columnheader", { name: "สถานะ" })).toBeInTheDocument();
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows[2]).toHaveTextContent("ชำระแล้ว");
-    expect(rows[0]).toHaveTextContent("รอชำระ");
+    expect(rows[1]).toHaveTextContent("รอชำระ");
+    expect(within(rows[0]).getByRole("button", { name: "ยืนยันออเดอร์ · ลูกค้า 3" })).toBeInTheDocument();
   });
 
   it("ยังไม่มีดีล → บอกว่ายังไม่มี", () => {
@@ -128,12 +143,34 @@ describe("OwnerSidebar / OwnerBottomNav", () => {
     expect(screen.getByRole("link", { name: "ภาพรวม" })).not.toHaveAttribute("aria-current");
   });
 
-  it("มือถือ: 5 เมนู กดได้ทุกเมนู (รวมผู้ช่วยตอบ LINE)", () => {
+  it("มือถือ: 5 เมนู กดได้ทุกเมนู (รวมผู้ช่วยตอบ LINE) · ออเดอร์แทนดีล (ดีลทั้งหมดเข้าจากหน้าภาพรวม)", () => {
     render(<OwnerBottomNav openCount={0} current="products" />);
     const nav = screen.getByRole("navigation", { name: "เมนูเถ้าแก่" });
     expect(within(nav).getAllByRole("link")).toHaveLength(5);
     expect(within(nav).getByRole("link", { name: "ช่วยตอบ" })).toHaveAttribute("href", "/owner/assist");
     expect(within(nav).getByRole("link", { name: "สินค้า" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "ออเดอร์" })).toHaveAttribute("href", "/owner/orders");
+    expect(within(nav).queryByRole("link", { name: "ดีล" })).not.toBeInTheDocument();
+  });
+
+  it("เมนูออเดอร์และชำระเงิน: badge บอกจำนวนออเดอร์รอยืนยัน (มาจากตัวแจ้งเตือน อัปเดตสด)", () => {
+    render(
+      <PendingCountContext value={3}>
+        <OwnerSidebar openCount={0} current="orders" />
+        <OwnerBottomNav openCount={0} current="orders" />
+      </PendingCountContext>,
+    );
+    const sidebar = screen.getByRole("complementary", { name: "เมนูเถ้าแก่" });
+    const link = within(sidebar).getByRole("link", { name: /ออเดอร์และชำระเงิน\s*มี\s*3\s*ออเดอร์รอยืนยัน/ });
+    expect(link).toHaveAttribute("href", "/owner/orders");
+    expect(link).toHaveAttribute("aria-current", "page");
+    const bottom = screen.getByRole("navigation", { name: "เมนูเถ้าแก่" });
+    expect(within(bottom).getByRole("link", { name: /ออเดอร์\s*3\s*ออเดอร์รอยืนยัน/ })).toHaveAttribute("href", "/owner/orders");
+  });
+
+  it("ไม่มีออเดอร์รอยืนยัน → ไม่มี badge", () => {
+    render(<OwnerSidebar openCount={0} />);
+    expect(screen.getByRole("link", { name: "ออเดอร์และชำระเงิน" })).toBeInTheDocument();
   });
 });
 

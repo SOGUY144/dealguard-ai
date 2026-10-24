@@ -12,7 +12,7 @@ beforeEach(() => refresh.mockClear());
 
 describe("PaidToggle — เถ้าแก่ยืนยันว่าได้รับเงินแล้ว", () => {
   it("รอชำระ → กด 'ได้รับเงินแล้ว' → บันทึก ขึ้น 'ชำระแล้ว' และโหลดหน้าใหม่", async () => {
-    const markPaid = vi.fn(async () => ({ ok: true as const, paidAt: "2026-10-25T03:15:00.000Z" }));
+    const markPaid = vi.fn(async () => ({ ok: true as const, paidAt: "2026-10-25T03:15:00.000Z", confirmedAt: "2026-10-25T03:00:00.000Z" }));
     render(<PaidToggle orderId="o1" buyerName="คุณนก" paidAt={null} markPaid={markPaid} />);
     expect(screen.getByText("รอชำระ")).toBeInTheDocument();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "ได้รับเงินแล้ว · คุณนก" })));
@@ -30,7 +30,7 @@ describe("PaidToggle — เถ้าแก่ยืนยันว่าได�
   });
 
   it("ชำระแล้ว → บอกเวลาที่ยืนยัน · กดผิดยกเลิกได้", async () => {
-    const markPaid = vi.fn(async () => ({ ok: true as const, paidAt: null }));
+    const markPaid = vi.fn(async () => ({ ok: true as const, paidAt: null, confirmedAt: "2026-10-25T03:00:00.000Z" }));
     render(<PaidToggle orderId="o1" buyerName="คุณนก" paidAt="2026-10-25T03:15:00.000Z" markPaid={markPaid} />);
     expect(screen.getByText("ชำระแล้ว 10:15")).toBeInTheDocument();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "ยกเลิกสถานะชำระแล้ว · คุณนก" })));

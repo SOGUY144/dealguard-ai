@@ -125,7 +125,10 @@ describe("OrderSummaryCard", () => {
     expect(screen.getByText("เครดิต 30 วัน")).toBeInTheDocument();
     expect(screen.getByText("฿195,000")).toBeInTheDocument();
     expect(screen.getByText(/รับโอนเข้าบัญชี \[ชื่อบัญชีร้าน\] เท่านั้น/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "ดูใบสรุปออเดอร์" })).toHaveAttribute("href", "/order/demo-A");
+    const receipt = screen.getByRole("link", { name: "ดูใบสรุปออเดอร์" });
+    expect(receipt).toHaveAttribute("href", "/order/demo-A");
+    // QR ชำระเงินอยู่ในใบสรุป — บนคอมต้องกดได้ด้วย ไม่ใช่แค่มือถือ
+    expect(receipt.className).not.toMatch(/(^|\s)md:hidden(\s|$)/);
   });
 
   it("ข้อเสนอของแถม → ใบสรุปบอกของแถมด้วย", () => {

@@ -3,7 +3,6 @@
 import "server-only";
 import { isOwnerApproved } from "@/lib/chat/owner-approval";
 import { infoTopics } from "@/lib/ai/info-topics";
-import { fallbackIntent } from "@/lib/ai/fallback-intent";
 import { parseIntent, type IntentLlm } from "@/lib/ai/intent";
 import { writeOffersText, type ReplyWriter } from "@/lib/ai/responder";
 import { saysNumber, type ReplyFacts } from "@/lib/ai/validator";
@@ -19,7 +18,14 @@ import {
   replyFor,
   type Reply,
 } from "@/lib/chat/replies";
-import { deriveSuggestions, isOfferCardExpired, lastOffers, OFFER_TTL_MS } from "@/lib/chat/suggestions";
+import {
+  deriveSuggestions,
+  isOfferCardExpired,
+  lastAskedPrice,
+  lastOffers,
+  OFFER_TTL_MS,
+  sinceLastOrder,
+} from "@/lib/chat/suggestions";
 import type { ChatMessage, ChatMessageDraft, ChatMessageOf, Offer, PublicProduct, Storefront } from "@/lib/chat/types";
 import { runDealEngine } from "@/lib/deal-engine";
 import { pickedLetter, rejectedLetters, rejectedLevers, type TradeLever } from "@/lib/deal-engine/rejections";
@@ -464,12 +470,6 @@ function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
-
-/** ข้อความลูกค้าหลังออเดอร์ล่าสุด (ต่อรองรอบใหม่หลังสั่งของ = เริ่มนับใหม่) */
-function sinceLastOrder(messages: ChatMessage[]): ChatMessage[] {
-  return messages.slice(messages.findLastIndex((m) => m.type === "order_summary") + 1);
-}
-
 /**
  * ทางเลือกที่ลูกค้าปฏิเสธ นับจากข้อความหลังออเดอร์ล่าสุด + ข้อความนี้
  * "ไม่เอาข้อ A" เทียบกับการ์ดที่ลูกค้าเห็นตอนพิมพ์ (ตัวอักษรเดียวกันอาจเป็นคนละทางในการ์ดถัดไป)
@@ -494,16 +494,6 @@ function rejectionsSince(messages: ChatMessage[], current: string): TradeLever[]
   readLetters(current);
   const found = new Set<TradeLever>([...rejectedLevers([...texts, current]), ...byLetter]);
   return (["volume", "cash", "bundle"] as const).filter((l) => found.has(l));
-}
-
-/** ราคาต่อชิ้นล่าสุดที่ลูกค้าขอในรอบต่อรองนี้ — "ไม่ซื้อเพิ่ม" ไม่ได้แปลว่าเลิกขอราคานั้น */
-function lastAskedPrice(messages: ChatMessage[], products: PublicProduct[], sku: string): number | null {
-  for (const m of sinceLastOrder(messages).reverse()) {
-    if (m.type !== "buyer_text") continue;
-    const price = fallbackIntent(m.text, { products, lastSku: sku }).requestedPrice;
-    if (price !== null) return price;
-  }
-  return null;
 }
 
 /**

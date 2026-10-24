@@ -73,7 +73,7 @@ describe("ชำระเงินของออเดอร์", () => {
 
   it("เถ้าแก่กดได้รับเงินแล้ว → ลูกค้าเห็นชำระแล้ว · หน้าดีลของเถ้าแก่เห็นด้วย", async () => {
     const result = await setOrderPaid(admin, orderId, true, new Date("2026-10-25T03:15:00Z"));
-    expect(result).toEqual({ ok: true, paidAt: "2026-10-25T03:15:00.000Z" });
+    expect(result).toEqual({ ok: true, paidAt: "2026-10-25T03:15:00.000Z", confirmedAt: "2026-10-25T03:15:00.000Z" });
     expect((await readOrder(buyer.client, orderId))?.paidAt).toBe("2026-10-25T03:15:00.000Z");
     // หน้าดีลแสดงเฉพาะออเดอร์ของบัญชี role buyer — ออเดอร์นี้ต้องอยู่และมีเวลาชำระ
     const { deals } = await readDeals(owner.client, null);
@@ -81,7 +81,7 @@ describe("ชำระเงินของออเดอร์", () => {
   });
 
   it("กดซ้ำ (หรือสองแท็บพร้อมกัน) → เวลาแรกที่ยืนยันอยู่ต่อ ไม่ถูกเขียนทับ", async () => {
-    expect(await setOrderPaid(admin, orderId, true, new Date("2026-10-26T09:00:00Z"))).toEqual({ ok: true, paidAt: "2026-10-25T03:15:00.000Z" });
+    expect(await setOrderPaid(admin, orderId, true, new Date("2026-10-26T09:00:00Z"))).toEqual({ ok: true, paidAt: "2026-10-25T03:15:00.000Z", confirmedAt: "2026-10-25T03:15:00.000Z" });
   });
 
   it("ลูกค้าแก้สถานะการชำระเองไม่ได้ (RLS ไม่มีสิทธิ์เขียน)", async () => {
@@ -90,7 +90,8 @@ describe("ชำระเงินของออเดอร์", () => {
   });
 
   it("เถ้าแก่กดผิด → ยกเลิกได้ ลูกค้าเห็นกลับเป็นยังไม่ชำระ", async () => {
-    expect(await setOrderPaid(admin, orderId, false)).toEqual({ ok: true, paidAt: null });
+    // ยืนยันออเดอร์แล้วยังอยู่ — ยกเลิกแค่การรับเงิน
+    expect(await setOrderPaid(admin, orderId, false)).toEqual({ ok: true, paidAt: null, confirmedAt: "2026-10-25T03:15:00.000Z" });
     expect((await readOrder(buyer.client, orderId))?.paidAt).toBeNull();
   });
 

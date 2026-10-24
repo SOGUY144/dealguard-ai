@@ -31,6 +31,15 @@ describe("connect — เข้าช่อง Realtime ด้วยสิทธ
     expect(calls).toEqual(["setAuth:buyer-token", "channel", "subscribe"]);
   });
 
+  it("ตัวแจ้งเตือนของเถ้าแก่ฟังทุกการเปลี่ยนแปลงของออเดอร์ (ออเดอร์ใหม่ + ยืนยัน/รับเงินจากอีกแท็บ)", async () => {
+    const { connectOwnerOrders } = await import("../live");
+    connectOwnerOrders(vi.fn(), vi.fn());
+    resolveSession({ data: { session: { access_token: "owner-token" } } });
+    await vi.waitFor(() => expect(calls).toContain("subscribe"));
+    const ch = fake.channel.mock.results[0].value as { on: ReturnType<typeof vi.fn> };
+    expect(ch.on).toHaveBeenCalledWith("postgres_changes", { event: "*", schema: "public", table: "orders" }, expect.any(Function));
+  });
+
   it("ออกจากหน้าก่อน session โหลดเสร็จ → ไม่เข้าช่องเลย", async () => {
     const { connectOrder } = await import("../live");
     const disconnect = connectOrder("o1")(vi.fn(), vi.fn());

@@ -9,7 +9,15 @@ import { OWNER_CREDIT_CHOICES } from "@/lib/chat/owner-approval";
 import type { ChatMessage } from "@/lib/chat/types";
 import { cn } from "@/lib/cn";
 import { formatBaht, formatClock, formatCredit, formatDayLabel, formatQty } from "@/lib/format";
-import { approvalDefaults, approvalPreview, quickReplies, type ApprovalProduct, type OwnerChatView } from "@/lib/owner/chat-view";
+import {
+  approvalDefaults,
+  approvalPreview,
+  approvalSuggestions,
+  quickReplies,
+  type ApprovalProduct,
+  type ApprovalSuggestion,
+  type OwnerChatView,
+} from "@/lib/owner/chat-view";
 import { escalationLabel, ownerInitials } from "@/lib/owner/summary";
 import { browserVoice, type LiveVoice } from "@/components/chat/use-chat-session";
 import type { Recorder } from "@/components/chat/voice-input";
@@ -482,9 +490,25 @@ function ApprovePanel({
   const [price, setPrice] = useState("");
   const [qty, setQty] = useState(defaults.qty ? String(defaults.qty) : "");
   const [creditDays, setCreditDays] = useState<number>(OWNER_CREDIT_CHOICES[0]);
-  const ids = { product: useId(), price: useId(), qty: useId(), credit: useId() };
+  const ids = { product: useId(), price: useId(), qty: useId(), credit: useId(), suggested: useId() };
 
   const product = products.find((p) => p.sku === sku) ?? products[0];
+  // ช่องราคาว่างไว้จนเถ้าแก่กด chip หรือพิมพ์เอง — ราคาที่ลูกค้าขออาจต่ำกว่าราคาพื้น
+  const suggestions = useMemo(() => (product ? approvalSuggestions(messages, products, product.sku) : []), [messages, products, product]);
+  // วันจ่ายจากข้อเสนอเดิม (เช่น 45 วัน) ที่ไม่มีในตัวเลือกของเถ้าแก่ → เพิ่มเป็นตัวเลือก
+  const creditChoices = [...new Set<number>([...OWNER_CREDIT_CHOICES, ...suggestions.flatMap((s) => s.creditDays ?? []), creditDays])].sort(
+    (a, b) => a - b,
+  );
+  const pick = (s: ApprovalSuggestion) => {
+    setPrice(String(s.pricePerUnit));
+    if (s.qty !== undefined) setQty(String(s.qty));
+    if (s.creditDays !== undefined) setCreditDays(s.creditDays);
+  };
+  const picked = (s: ApprovalSuggestion) =>
+    price.trim() !== "" &&
+    Number(price) === s.pricePerUnit &&
+    (s.qty === undefined || Number(qty) === s.qty) &&
+    (s.creditDays === undefined || creditDays === s.creditDays);
   const priceN = Number(price);
   const qtyN = Number(qty);
   const valid = !!product && price.trim() !== "" && priceN > 0 && Number.isInteger(qtyN) && qtyN > 0;
@@ -513,6 +537,30 @@ function ApprovePanel({
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span id={ids.suggested} className="text-xs text-muted">
+            ราคาแนะนำ
+          </span>
+          <div role="group" aria-labelledby={ids.suggested} className="flex flex-wrap gap-1.5">
+            {suggestions.map((s) => (
+              <button
+                key={s.label}
+                type="button"
+                aria-pressed={picked(s)}
+                onClick={() => pick(s)}
+                className={buttonClass(
+                  "chip",
+                  cn("min-h-10 text-[13px] font-medium", picked(s) && "border-accent bg-accent-tint2 text-accent-ink"),
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -555,7 +603,7 @@ function ApprovePanel({
           ต้องจ่ายภายใน
         </span>
         <div role="group" aria-labelledby={ids.credit} className="flex flex-wrap gap-1.5">
-          {OWNER_CREDIT_CHOICES.map((days) => (
+          {creditChoices.map((days) => (
             <button
               key={days}
               type="button"

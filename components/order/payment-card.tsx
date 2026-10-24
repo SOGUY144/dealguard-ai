@@ -1,12 +1,19 @@
-import { Check, QrCode } from "lucide-react";
+import { Check, Clock, QrCode } from "lucide-react";
 import { formatBaht, formatClock, thaiDate } from "@/lib/format";
 
 /**
  * QR + วันครบกำหนด + สถานะการชำระของออเดอร์ (สร้างที่ server)
  * promptpay = ร้านตั้ง PROMPTPAY_ID ของตัวเองแล้ว · demo = QR ตัวอย่าง สแกนจ่ายจริงไม่ได้
- * paidAt = เถ้าแก่กด "ได้รับเงินแล้ว" (null = รอร้านยืนยัน)
+ * confirmedAt = เถ้าแก่กด "ยืนยันออเดอร์" (null = รอร้านยืนยัน ยังไม่โชว์ QR — ร้านเช็กของก่อนรับเงิน)
+ * paidAt = เถ้าแก่กด "ได้รับเงินแล้ว" (null = รอร้านยืนยันการชำระ)
  */
-export type PaymentView = { qrSvg: string; mode: "promptpay" | "demo"; dueAt: string | null; paidAt: string | null };
+export type PaymentView = {
+  qrSvg: string;
+  mode: "promptpay" | "demo";
+  dueAt: string | null;
+  confirmedAt: string | null;
+  paidAt: string | null;
+};
 
 /** ส่วนชำระเงินท้ายใบสรุปออเดอร์ — สถานะมาจากฐานข้อมูลเท่านั้น (ลูกค้ากดเปลี่ยนเองไม่ได้) */
 export function PaymentCard({ payment, total }: { payment: PaymentView; total: number }) {
@@ -27,8 +34,23 @@ export function PaymentCard({ payment, total }: { payment: PaymentView; total: n
             ร้านยืนยันเมื่อ {thaiDate(new Date(payment.paidAt))} {formatClock(payment.paidAt)}
           </span>
         </>
+      ) : !payment.confirmedAt ? (
+        <>
+          <span role="status" className="flex items-center gap-1.5 rounded-full bg-warn-bg px-3.5 py-2 text-sm font-semibold text-warn-ink">
+            <Clock aria-hidden="true" size={16} />
+            รอร้านยืนยันออเดอร์
+          </span>
+          <span className="text-[22px] font-bold">{formatBaht(total)}</span>
+          <span className="text-xs leading-[1.5] text-muted">
+            ร้านเช็กของแล้วยืนยันในแชต · QR สำหรับจ่ายจะขึ้นตรงนี้เมื่อร้านยืนยัน
+          </span>
+        </>
       ) : (
         <>
+          <span className="flex items-center gap-1.5 rounded-full bg-ok-bg px-3 py-1 text-xs font-semibold text-ok-ink">
+            <Check aria-hidden="true" size={13} />
+            ร้านยืนยันออเดอร์แล้ว
+          </span>
           <span className="flex items-center gap-1.5 text-sm font-semibold">
             <QrCode aria-hidden="true" size={16} />
             {due}

@@ -10,7 +10,7 @@ export async function readOrder(db: SupabaseClient, id: string): Promise<OrderVi
   if (!UUID.test(id)) return null;
   const { data, error } = await db
     .from("orders")
-    .select("id, product_name, created_at, paid_at, offers(*)")
+    .select("id, product_name, created_at, confirmed_at, paid_at, offers(*)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`[orders] อ่านออเดอร์: ${error.message}`);
@@ -19,6 +19,7 @@ export async function readOrder(db: SupabaseClient, id: string): Promise<OrderVi
     id: String(data.id),
     productName: String(data.product_name),
     at: new Date(String(data.created_at)).toISOString(),
+    confirmedAt: data.confirmed_at ? new Date(String(data.confirmed_at)).toISOString() : null,
     paidAt: data.paid_at ? new Date(String(data.paid_at)).toISOString() : null,
     offer: toOffer(data.offers as unknown as Record<string, unknown>),
   };

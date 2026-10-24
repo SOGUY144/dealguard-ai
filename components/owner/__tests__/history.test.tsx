@@ -7,6 +7,7 @@ import { DealHistory } from "../deal-history";
 import { EscalationHistory } from "../escalation-history";
 
 const deal = (id: string, at: string, letter: 0 | 1): OwnerDeal => ({
+  confirmedAt: null,
   paidAt: null,
   id,
   chatId: `chat-${id}`,

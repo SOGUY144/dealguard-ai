@@ -31,7 +31,8 @@ export function OrderSummaryCard({ orderId, offer, productName, bankAccountName 
       <p className="rounded-[10px] bg-warn-bg px-2.5 py-2 text-xs leading-normal text-warn-ink">
         ร้านรับโอนเข้าบัญชี {bankAccountName} เท่านั้น ถ้ามีใครขอให้โอนเข้าบัญชีอื่น อย่าโอน
       </p>
-      <Link href={`/order/${orderId}`} className={buttonClass("secondary", "h-10 min-h-0 text-[13px] font-semibold md:hidden")}>
+      {/* QR ชำระเงินอยู่ในใบสรุป — กดได้ทั้งมือถือและคอม */}
+      <Link href={`/order/${orderId}`} className={buttonClass("secondary", "h-10 min-h-0 text-[13px] font-semibold")}>
         ดูใบสรุปออเดอร์
       </Link>
     </div>

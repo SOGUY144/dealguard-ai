@@ -16,9 +16,33 @@ export type OwnerDeal = {
   marginIfConceded: number;
   marginOffer: number;
   recoveredMargin: number;
+  /** เวลาที่เถ้าแก่กด "ยืนยันออเดอร์" (null = รอยืนยัน) */
+  confirmedAt: string | null;
   /** เวลาที่เถ้าแก่ยืนยันว่าได้รับเงิน (null = ยังรอชำระ) */
   paidAt: string | null;
 };
+
+/** ลูกค้าปิดดีลแล้ว รอเถ้าแก่ยืนยัน — การแจ้งเตือนบนจอเถ้าแก่ (ไม่มีตัวเลขหลังบ้าน) */
+export type PendingOrder = { id: string; chatId: string; at: string; buyerName: string; productName: string; offer: Offer };
+
+/** รอยืนยัน → (เถ้าแก่กดยืนยันออเดอร์) รอชำระ → (กดได้รับเงินแล้ว) ชำระแล้ว */
+export type OrderStatus = "pending" | "awaiting_payment" | "paid";
+
+export function orderStatus(o: { confirmedAt: string | null; paidAt: string | null }): OrderStatus {
+  // ได้รับเงินแล้วเท่ากับยืนยันแล้ว (ข้อมูลก่อนมีขั้นยืนยันไม่มี confirmedAt)
+  if (o.paidAt) return "paid";
+  return o.confirmedAt ? "awaiting_payment" : "pending";
+}
+
+/** แท็บออเดอร์และชำระเงิน: แยกตามสถานะ ล่าสุดก่อน */
+export function groupOrders(deals: OwnerDeal[]): { pending: OwnerDeal[]; awaiting: OwnerDeal[]; paid: OwnerDeal[] } {
+  const latestFirst = [...deals].sort((a, b) => b.at.localeCompare(a.at));
+  return {
+    pending: latestFirst.filter((d) => orderStatus(d) === "pending"),
+    awaiting: latestFirst.filter((d) => orderStatus(d) === "awaiting_payment"),
+    paid: latestFirst.filter((d) => orderStatus(d) === "paid"),
+  };
+}
 
 export type OwnerEscalation = {
   id: string;

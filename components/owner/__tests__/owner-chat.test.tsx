@@ -218,4 +218,59 @@ describe("OwnerChatScreen — อนุมัติราคา (AI เจรจ
     expect(send).toHaveBeenCalledWith({ type: "approve_price", sku: "CBL-C-1M", pricePerUnit: 110, qty: 1000, creditDays: 7 });
     await waitFor(() => expect(screen.queryByRole("region", { name: "อนุมัติราคาให้ลูกค้า" })).not.toBeInTheDocument());
   });
+
+  it("ราคาแนะนำ: ช่องราคาว่างจนกว่าจะกด · กด chip แล้วเติมราคา/จำนวน/วันจ่าย · วันจ่ายนอกตัวเลือกขึ้นเป็นตัวเลือกเพิ่ม", () => {
+    const view: OwnerChatView = {
+      ...negotiating,
+      messages: [
+        { id: "b1", at, type: "buyer_text", text: "ขอ 110 ได้ไหม 1000 ชิ้น", inputMode: "text" },
+        {
+          id: "o1",
+          at,
+          type: "offers",
+          sku: "CBL-C-1M",
+          offers: [
+            { id: "A", lever: "volume", label: "ซื้อเยอะ", pricePerUnit: 130, qty: 1500, conditionText: "", total: 195000, creditDays: 45 },
+            { id: "B", lever: "cash", label: "จ่ายสด", pricePerUnit: 147, qty: 1000, conditionText: "", total: 147000, creditDays: 0 },
+          ],
+        },
+      ],
+    };
+    render(<OwnerChatScreen initial={view} ownerName="เฮียชัย" transport={{ act: vi.fn(), load: vi.fn() }} connect={null} approvalProducts={products} />);
+    fireEvent.click(screen.getByRole("button", { name: "อนุมัติราคา" }));
+    const panel = screen.getByRole("region", { name: "อนุมัติราคาให้ลูกค้า" });
+    const chips = within(within(panel).getByRole("group", { name: "ราคาแนะนำ" })).getAllByRole("button");
+    expect(chips.map((c) => c.textContent)).toEqual(["ลูกค้าขอ ฿110", "A ซื้อเยอะ ฿130 × 1,500", "B จ่ายสด ฿147 × 1,000", "ราคาปกติ ฿150"]);
+    expect(chips.every((c) => c.getAttribute("aria-pressed") === "false")).toBe(true);
+    expect(within(panel).getByLabelText("ราคาต่อชิ้น (บาท)")).toHaveValue(null);
+
+    fireEvent.click(chips[1]);
+    expect(within(panel).getByLabelText("ราคาต่อชิ้น (บาท)")).toHaveValue(130);
+    expect(within(panel).getByLabelText("จำนวน (ชิ้น)")).toHaveValue(1500);
+    expect(within(panel).getByRole("button", { name: "เครดิต 45 วัน" })).toHaveAttribute("aria-pressed", "true");
+    expect(chips[1]).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(chips[0]);
+    expect(within(panel).getByLabelText("ราคาต่อชิ้น (บาท)")).toHaveValue(110);
+    expect(within(panel).getByLabelText("จำนวน (ชิ้น)")).toHaveValue(1000);
+    expect(chips[0]).toHaveAttribute("aria-pressed", "true");
+    expect(chips[1]).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.change(within(panel).getByLabelText("ราคาต่อชิ้น (บาท)"), { target: { value: "112" } });
+    expect(chips[0]).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("เปลี่ยนสินค้า → chip ราคาแนะนำคิดใหม่ตามสินค้านั้น", () => {
+    const two = [...products, { sku: "CBL-L-1M", name: "สาย Lightning 1 เมตร", listPrice: 200, unitCost: 110, floorPrice: 140 }];
+    render(<OwnerChatScreen initial={negotiating} ownerName="เฮียชัย" transport={{ act: vi.fn(), load: vi.fn() }} connect={null} approvalProducts={two} />);
+    fireEvent.click(screen.getByRole("button", { name: "อนุมัติราคา" }));
+    const panel = screen.getByRole("region", { name: "อนุมัติราคาให้ลูกค้า" });
+    const labels = () => within(within(panel).getByRole("group", { name: "ราคาแนะนำ" })).getAllByRole("button").map((c) => c.textContent);
+    expect(labels()).toContain("ราคาปกติ ฿150");
+
+    fireEvent.change(within(panel).getByLabelText("สินค้า"), { target: { value: "CBL-L-1M" } });
+    expect(labels()).toEqual(["ราคาปกติ ฿200"]);
+    fireEvent.click(within(panel).getByRole("button", { name: "ราคาปกติ ฿200" }));
+    expect(within(panel).getByLabelText("ราคาต่อชิ้น (บาท)")).toHaveValue(200);
+  });
 });

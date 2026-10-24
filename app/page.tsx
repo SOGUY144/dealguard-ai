@@ -57,7 +57,8 @@ async function OwnerPreview() {
   return (
     <>
       <p role="note" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-accent-tint px-4 py-2 text-center text-[13px] text-accent-ink">
-        หน้าตัวอย่างของลูกค้า — ข้อความไม่ถูกบันทึก และไม่นับเป็นยอดขาย
+        {/* เถ้าแก่เคยงงว่าแชตหาย/อนุมัติแล้วไม่ขึ้น — บอกให้ชัดว่าหน้านี้แยกจากแชตจริงของลูกค้า */}
+        หน้าตัวอย่างของลูกค้า — ข้อความไม่ถูกบันทึก (รีเฟรชแล้วเริ่มใหม่) และไม่นับเป็นยอดขาย · ทดสอบจริงให้ล็อกอินบัญชีลูกค้าในอีกเบราว์เซอร์
         <Link href="/owner" className="font-semibold underline underline-offset-2">
           กลับหน้าเถ้าแก่
         </Link>
