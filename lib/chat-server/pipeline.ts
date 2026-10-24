@@ -18,6 +18,7 @@ import { deriveSuggestions, isOfferCardExpired, lastOffers, OFFER_TTL_MS } from 
 import type { ChatMessage, ChatMessageDraft, ChatMessageOf, Offer, PublicProduct, Storefront } from "@/lib/chat/types";
 import { runDealEngine } from "@/lib/deal-engine";
 import type { Intent, MerchantConfig, NegotiationState, PricedOffer } from "@/lib/deal-engine/types";
+import type { Speaker, SpokenAudio } from "@/lib/voice/speaker";
 import type { ChatStore, StoredChat } from "./store";
 
 export type PipelineDeps = {
@@ -26,7 +27,16 @@ export type PipelineDeps = {
   intentLlm: IntentLlm | null;
   /** เวลาปัจจุบัน (test ใส่เองได้) */
   now?: () => Date;
+  /** เสียง AI (ElevenLabs) — null = ไม่มีคีย์ ตอบเป็นข้อความอย่างเดียว */
+  speaker?: Speaker | null;
+  /** รอเสียงได้นานสุดเท่านี้ ช้ากว่านี้ตอบเป็นข้อความแทน */
+  voiceTimeoutMs?: number;
 };
+
+/** คำตอบที่จะบันทึก + เสียงของข้อความ ai_voice (ตำแหน่งใน messages) */
+type Outgoing = Reply & { voice?: { index: number; spoken: SpokenAudio } };
+
+const DEFAULT_VOICE_TIMEOUT_MS = 5000;
 export type Buyer = { id: string; displayName: string };
 
 /** ข้อความก่อนหน้าที่ส่งให้ GPT เข้าใจบริบท */
@@ -89,7 +99,7 @@ async function openChat({ store, storefront }: PipelineDeps, buyer: Buyer): Prom
 function view(
   chat: StoredChat,
   messages: ChatMessage[],
-  extra: Pick<ChatView, "focus" | "notice"> = {},
+  extra: Pick<ChatView, "focus" | "notice" | "voice"> = {},
   now = new Date(),
 ): ChatView {
   return { chatId: chat.id, messages, mode: chat.mode, suggestions: deriveSuggestions(messages, chat.mode, now), ...extra };
@@ -156,7 +166,9 @@ async function send(
   const history = messages.filter((m) => m.type === "buyer_text").slice(-HISTORY_LIMIT).map((m) => m.text);
   // ข้อความลูกค้าบันทึกพร้อมคำตอบในคำสั่งเดียว (ประหยัด round trip) — ถ้าตอบไม่สำเร็จ หน้าจอคืนข้อความให้ส่งใหม่
   const buyerDraft: ChatMessageDraft = { type: "buyer_text", text, inputMode };
-  const withBuyerText = (reply: Reply): Reply => ({ ...reply, messages: [buyerDraft, ...reply.messages] });
+  // ข้อความลูกค้า + (ถ้าพูดมา) แปลงคำตอบเป็นเสียง — ทุกทางที่ AI ตอบผ่านตรงนี้
+  const prepare = async (reply: Reply): Promise<Outgoing> =>
+    speakReply(deps, { ...reply, messages: [buyerDraft, ...reply.messages] }, inputMode);
   const onlyBuyerText = async (target: StoredChat) =>
     view(target, [...messages, ...(await store.appendMessages(chat.id, [buyerDraft]))]);
   // ส่งเรื่องให้เถ้าแก่แล้ว — เก็บข้อความไว้ให้เถ้าแก่อ่าน AI ไม่ตอบ
@@ -184,7 +196,7 @@ async function send(
     sameQty &&
     !intent.injectionSuspected
   ) {
-    return commit(deps, chat, messages, withBuyerText(competitorReply(open, competitorPrice, storefront.ownerName)));
+    return commit(deps, chat, messages, await prepare(competitorReply(open, competitorPrice, storefront.ownerName)));
   }
 
   // "สั่ง 1,500 ชิ้น" / "จ่ายสด" ตรงกับข้อเสนอที่เพิ่งให้ไป → ชี้ไปข้อนั้น ไม่ต่อราคารอบใหม่
@@ -192,10 +204,10 @@ async function send(
   if (open && candidates.length === 1) {
     const [matched] = candidates;
     const reply: Reply = { messages: [{ type: "ai_text", text: pickedOfferText(matched) }] };
-    return commit(deps, chat, messages, withBuyerText(reply), undefined, { messageId: open.id, offerId: matched.id });
+    return commit(deps, chat, messages, await prepare(reply), undefined, { messageId: open.id, offerId: matched.id });
   }
   // ตรงหลายข้อ (เช่น B กับ C เป็น 1,000 ชิ้นทั้งคู่) → ถามว่าข้อไหน
-  if (open && candidates.length > 1) return commit(deps, chat, messages, withBuyerText(ambiguousOfferReply(candidates)));
+  if (open && candidates.length > 1) return commit(deps, chat, messages, await prepare(ambiguousOfferReply(candidates)));
 
 
   const buyerName = addressName(buyer.displayName);
@@ -224,7 +236,7 @@ async function send(
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
 
   try {
-    return await commit(deps, { ...current, negotiation: result.state }, messages, withBuyerText(reply), priced);
+    return await commit(deps, { ...current, negotiation: result.state }, messages, await prepare(reply), priced);
   } catch (err) {
     // บันทึกคำตอบไม่สำเร็จ ลูกค้าจะส่งใหม่ — คืนตัวนับ ไม่งั้นรอบส่งใหม่ถูกนับซ้ำ (escalate เร็วเกินจริง)
     await Promise.resolve(saveCounters(store, { ...current, negotiation: result.state }, current.negotiation)).catch(() => false);
@@ -256,7 +268,7 @@ async function commit(
   deps: PipelineDeps,
   chat: StoredChat,
   messages: ChatMessage[],
-  reply: Reply,
+  reply: Outgoing,
   priced?: PricedOffer[],
   focus?: ChatView["focus"],
 ): Promise<ChatView> {
@@ -277,7 +289,15 @@ async function commit(
     throw err;
   }
   const next: StoredChat = handoff ? { ...chat, mode: "human" } : chat;
-  return view(next, [...messages, ...added], focus && { focus }, clock(deps));
+  const spoken = reply.voice && added[reply.voice.index];
+  const voice = spoken && reply.voice
+    ? {
+        messageId: spoken.id,
+        mimeType: reply.voice.spoken.mimeType,
+        base64: Buffer.from(reply.voice.spoken.audio).toString("base64"),
+      }
+    : undefined;
+  return view(next, [...messages, ...added], { ...(focus && { focus }), ...(voice && { voice }) }, clock(deps));
 }
 
 async function confirmOffer(
@@ -330,3 +350,38 @@ async function confirmOffer(
   ]);
   return view(chat, [...messages.map((m) => (m.id === confirmed.id ? confirmed : m)), ...added]);
 }
+
+/**
+ * ลูกค้าพูดมา → ตอบเป็นเสียง (SKILL: ตอบตามแบบที่ลูกค้าใช้) — แปลงข้อความแรกของ AI เป็น ai_voice + transcript
+ * เสียงล่ม/ช้าเกิน → แจ้ง voice_unavailable แล้วตอบเป็นข้อความ (Mobile-NoVoice) · ไม่มีคีย์เสียง → ข้อความเฉยๆ
+ */
+async function speakReply(deps: PipelineDeps, reply: Reply, inputMode: "text" | "voice"): Promise<Outgoing> {
+  if (inputMode !== "voice" || !deps.speaker) return reply;
+  const index = reply.messages.findIndex((m) => m.type === "ai_text");
+  if (index < 0) return reply;
+  const draft = reply.messages[index];
+  if (draft.type !== "ai_text") return reply;
+
+  const started = Date.now();
+  try {
+    const spoken = await withDeadline(deps.speaker.speak(draft.text), deps.voiceTimeoutMs ?? DEFAULT_VOICE_TIMEOUT_MS);
+    console.info(`[voice] tts ${Date.now() - started} ms · ${spoken.audio.byteLength} bytes`);
+    const messages = [...reply.messages];
+    messages[index] = { type: "ai_voice", durationSec: spoken.durationSec, transcript: draft.text };
+    return { ...reply, messages, voice: { index, spoken } };
+  } catch (err) {
+    console.warn(`[voice] tts ล่ม ตอบเป็นข้อความแทน (${Date.now() - started} ms): ${err instanceof Error ? err.message : err}`);
+    const messages = [...reply.messages];
+    messages.splice(index, 0, { type: "system", kind: "voice_unavailable" });
+    return { ...reply, messages };
+  }
+}
+
+function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+

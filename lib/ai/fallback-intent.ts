@@ -2,6 +2,7 @@
 // ไม่ต้องเก่งเท่า GPT แค่ต้องไม่เดา: หาไม่เจอให้เป็น null แล้วให้ Deal Engine ถามกลับ
 import type { Intent } from "@/lib/deal-engine/types";
 import type { PublicProduct } from "@/lib/chat/types";
+import { thaiNumberWordsToDigits } from "./thai-numbers";
 
 export type IntentContext = {
   products: PublicProduct[];
@@ -34,8 +35,8 @@ const PRICE_PATTERNS = [
 const num = (s: string | undefined) => (s === undefined ? null : Number(s));
 
 export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
-  // เลขไทย ๑๒๕ → 125 · "1,000" → "1000"
-  const text = raw
+  // เลขไทย ๑๒๕ → 125 · "หนึ่งพันห้าร้อย" → 1500 · "1,000" → "1000"
+  const text = thaiNumberWordsToDigits(raw)
     .replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - 0x0e50))
     .replace(/(\d),(?=\d{3}\b)/g, "$1");
 

@@ -3,8 +3,15 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HandoffKind } from "@/lib/chat/replies";
-import { toOffer } from "@/lib/chat-server/supabase-store";
-import { bangkokDayStart, type OwnerDeal, type OwnerEscalation } from "./summary";
+import { toMessage, toOffer } from "@/lib/chat-server/supabase-store";
+import {
+  activeChatStatus,
+  bangkokDayStart,
+  chatPreview,
+  type ActiveChat,
+  type OwnerDeal,
+  type OwnerEscalation,
+} from "./summary";
 
 type Row = Record<string, unknown>;
 
@@ -13,6 +20,10 @@ const one = (v: unknown): Row | null => (Array.isArray(v) ? ((v[0] as Row) ?? nu
 
 /** รายการเรื่องรอตัดสินที่แสดงได้มากสุด (จำนวนจริงนับแยก) */
 const ESCALATION_LIST_LIMIT = 20;
+/** แชตที่กำลังคุยที่แสดงในหน้าภาพรวม */
+const ACTIVE_CHAT_LIMIT = 8;
+/** ข้อความล่าสุดต่อแชตที่ใช้ดูสถานะ/ตัวอย่างข้อความ */
+const PREVIEW_MESSAGES = 4;
 
 export type OwnerData = {
   deals: OwnerDeal[];
@@ -21,6 +32,8 @@ export type OwnerData = {
   openCount: number;
   /** ออเดอร์ที่อ่าน margin ไม่ได้ (ข้อมูลไม่ครบ) — ควรเป็น 0 เสมอ */
   incompleteDeals: number;
+  /** แชตของลูกค้าที่มีความเคลื่อนไหววันนี้ ล่าสุดก่อน */
+  activeChats: ActiveChat[];
 };
 
 export async function readOwnerData(db: SupabaseClient, now = new Date()): Promise<OwnerData> {
@@ -67,6 +80,7 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
   return {
     deals,
     incompleteDeals,
+    activeChats: await readActiveChats(db, since),
     openCount: escalations.count ?? escalations.data.length,
     escalations: (escalations.data as Row[]).map((e) => ({
       id: String(e.id),
@@ -77,3 +91,45 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
     })),
   };
 }
+
+/** แชตของลูกค้า (ไม่รวมบัญชีเถ้าแก่) ที่มีความเคลื่อนไหวตั้งแต่ since — สถานะ + ข้อความล่าสุด */
+async function readActiveChats(db: SupabaseClient, since: string): Promise<ActiveChat[]> {
+  const chats = await db
+    .from("chats")
+    .select("id, mode, updated_at, profiles!inner(display_name, role)")
+    .eq("profiles.role", "buyer")
+    .gte("updated_at", since)
+    .order("updated_at", { ascending: false })
+    .limit(ACTIVE_CHAT_LIMIT);
+  if (chats.error) throw new Error(`[owner] อ่านแชตที่กำลังคุย: ${chats.error.message}`);
+  const rows = chats.data as Row[];
+  if (rows.length === 0) return [];
+
+  // ข้อความล่าสุดของทุกแชตในคำขอเดียว แล้วแบ่งตามแชต
+  const messages = await db
+    .from("messages")
+    .select("*")
+    .in("chat_id", rows.map((r) => String(r.id)))
+    .order("seq", { ascending: false })
+    .limit(rows.length * PREVIEW_MESSAGES * 6);
+  if (messages.error) throw new Error(`[owner] อ่านข้อความล่าสุด: ${messages.error.message}`);
+  const byChat = new Map<string, Row[]>();
+  for (const m of messages.data as Row[]) {
+    const list = byChat.get(String(m.chat_id)) ?? [];
+    if (list.length < PREVIEW_MESSAGES) list.push(m);
+    byChat.set(String(m.chat_id), list);
+  }
+
+  return rows.map((r) => {
+    const recent = (byChat.get(String(r.id)) ?? []).reverse().map(toMessage);
+    const mode = r.mode === "human" ? "human" : "ai";
+    return {
+      chatId: String(r.id),
+      buyerName: String(one(r.profiles)?.display_name ?? "ลูกค้า"),
+      status: activeChatStatus(mode, recent),
+      preview: chatPreview(recent),
+      at: recent.at(-1)?.at ?? new Date(String(r.updated_at)).toISOString(),
+    };
+  });
+}
+

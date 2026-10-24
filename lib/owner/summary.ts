@@ -1,7 +1,8 @@
 // ตัวเลขหน้าเถ้าแก่ (Owner-Desktop / Owner-Mobile) — คำนวณจากออเดอร์ที่ปิดได้ ไม่ใช่จากข้อเสนอทั้งหมด
 // "กำไรที่รักษาไว้" = เทียบกับถ้ายอมลดตามที่ลูกค้าขอ (SKILL §6.5) ไม่ใช่กำไรทั้งหมดที่เกิดจาก AI
 import type { HandoffKind } from "@/lib/chat/replies";
-import type { Offer } from "@/lib/chat/types";
+import type { ChatMessage, Offer } from "@/lib/chat/types";
+import { formatBaht } from "@/lib/format";
 
 /** ดีลที่ปิดได้ 1 ดีล — มีตัวเลขหลังบ้าน แสดงได้เฉพาะหน้าเถ้าแก่ */
 export type OwnerDeal = {
@@ -63,3 +64,48 @@ export function ownerInitials(displayName: string): string {
   const name = displayName.trim().replace(/^(เฮีย|คุณ)/, "");
   return name.slice(0, 3) || "ร้าน";
 }
+
+/** แชตหนึ่งห้องในกล่อง "แชตที่กำลังคุย" (ไม่มีในไฟล์ดีไซน์ — ทีมขอเพิ่ม 24 ต.ค. 2569) */
+export type ActiveChat = {
+  chatId: string;
+  buyerName: string;
+  status: ActiveChatStatus;
+  preview: string;
+  at: string;
+};
+
+/** owner = AI หยุดตอบ เถ้าแก่ดูแล · ordered = ข้อความล่าสุดคือปิดดีล · ai = AI กำลังคุย */
+export type ActiveChatStatus = "owner" | "ordered" | "ai";
+
+const lastReal = (messages: ChatMessage[]) => messages.findLast((m) => m.type !== "system");
+
+export function activeChatStatus(mode: "ai" | "human", messages: ChatMessage[]): ActiveChatStatus {
+  if (mode === "human") return "owner";
+  return lastReal(messages)?.type === "order_summary" ? "ordered" : "ai";
+}
+
+/** ข้อความล่าสุดแบบสั้นสำหรับแถวในรายการ */
+export function chatPreview(messages: ChatMessage[]): string {
+  const m = lastReal(messages);
+  switch (m?.type) {
+    case undefined:
+      return "";
+    case "buyer_text":
+      return m.text;
+    case "ai_text":
+      return `AI: ${m.text}`;
+    case "ai_voice":
+      return `AI: ${m.transcript}`;
+    case "owner_text":
+      return `คุณ: ${m.text}`;
+    case "product_card":
+      return `เลือก ${m.name}`;
+    case "offers":
+      return `AI เสนอ ${m.offers.length} ทาง`;
+    case "order_summary":
+      return `ปิดดีล ข้อ ${m.offer.id} · ${formatBaht(m.offer.total)}`;
+    case "handoff":
+      return `ส่งเรื่องให้เถ้าแก่ · ${m.subject}`;
+  }
+}
+

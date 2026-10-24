@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import merchant from "@/lib/config/merchant.json";
 import type { ChatView } from "@/lib/chat/actions";
 import type { ChatMessage, ChatMessageOf } from "@/lib/chat/types";
@@ -532,6 +532,66 @@ describe("รีวิวรอบ 2 — บันทึกไม่ครบแ
     expect(flaky.orders).toHaveLength(1);
     expect(last(view, "order_summary")).toMatchObject({ orderId: flaky.orders[0].id, offer: { id: "B" } });
     expect(last(view, "offers")).toMatchObject({ confirmed: true, selectedId: "B" });
+  });
+});
+
+describe("เฟส 6 — ตอบเป็นเสียงเมื่อลูกค้าพูดมา", () => {
+  const fakeAudio = new Uint8Array([1, 2, 3, 4]);
+  const speaker = (impl: (text: string) => Promise<{ audio: Uint8Array; mimeType: string; durationSec: number }>) => ({
+    speak: vi.fn(impl),
+  });
+
+  it("พูดมา → คำตอบเป็นข้อความเสียง (มี transcript) + ข้อเสนอ · ส่งไฟล์เสียงกลับให้หน้าจอ ไม่เก็บลงฐานข้อมูล", async () => {
+    const tts = speaker(async () => ({ audio: fakeAudio, mimeType: "audio/mpeg", durationSec: 6.4 }));
+    deps.speaker = tts;
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "voice");
+    const voice = last(view, "ai_voice")!;
+    expect(voice).toMatchObject({ durationSec: 6.4 });
+    expect(voice.transcript).toContain("ราคา 125 ที่ 1,000 ชิ้น");
+    // ข้อความ AI ที่เป็นตัวอักษรมีแค่คำทักทาย + บอกราคาตอนเลือกสินค้า (คำตอบต่อราคากลายเป็นเสียง)
+    expect(view.messages.filter((m) => m.type === "ai_text")).toHaveLength(2);
+    expect(last(view, "offers")?.offers).toHaveLength(3);
+    expect(tts.speak).toHaveBeenCalledWith(voice.transcript);
+    expect(view.voice).toEqual({ messageId: voice.id, mimeType: "audio/mpeg", base64: "AQIDBA==" });
+    const stored = store.messages.get(store.chats[0].id)!.find((m) => m.id === voice.id)!;
+    expect(JSON.stringify(stored)).not.toContain("AQIDBA");
+  });
+
+  it("พิมพ์มา → ตอบเป็นข้อความอย่างเดียว ไม่เรียกเสียง", async () => {
+    const tts = speaker(async () => ({ audio: fakeAudio, mimeType: "audio/mpeg", durationSec: 1 }));
+    deps.speaker = tts;
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "text");
+    expect(last(view, "ai_voice")).toBeUndefined();
+    expect(view.voice).toBeUndefined();
+    expect(tts.speak).not.toHaveBeenCalled();
+  });
+
+  it("เสียงล่ม → แจ้ง 'ข้อความเสียงยังไม่พร้อม' แล้วตอบเป็นข้อความ + ข้อเสนอครบ (Mobile-NoVoice)", async () => {
+    deps.speaker = speaker(async () => Promise.reject(new Error("elevenlabs 500")));
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "voice");
+    const tail = view.messages.slice(-3).map((m) => (m.type === "system" ? `system:${m.kind}` : m.type));
+    expect(tail).toEqual(["system:voice_unavailable", "ai_text", "offers"]);
+    expect(view.voice).toBeUndefined();
+  });
+
+  it("เสียงช้าเกิน → ไม่รอ ตอบเป็นข้อความแทน", async () => {
+    deps.speaker = speaker(() => new Promise(() => {}));
+    deps.voiceTimeoutMs = 50;
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "voice");
+    expect(last(view, "ai_text")?.text).toContain("ราคา 125");
+    expect(view.messages.some((m) => m.type === "system" && m.kind === "voice_unavailable")).toBe(true);
+  });
+
+  it("ไม่มีคีย์เสียง (speaker = null) → ตอบเป็นข้อความ ไม่แจ้งว่าเสียงล่ม", async () => {
+    deps.speaker = null;
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "voice");
+    expect(last(view, "ai_text")?.text).toContain("ราคา 125");
+    expect(view.messages.some((m) => m.type === "system" && m.kind === "voice_unavailable")).toBe(false);
   });
 });
 

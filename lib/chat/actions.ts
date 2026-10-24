@@ -30,6 +30,8 @@ export type ChatView = {
   mode: "ai" | "human";
   /** ให้หน้าจอเลือกข้อเสนอนี้ให้ (เช่น ลูกค้าพิมพ์ "สั่ง 1,500 ชิ้น" ตรงกับข้อ A ที่เพิ่งเสนอ) */
   focus?: { messageId: string; offerId: Offer["id"] };
+  /** เสียงตอบของข้อความ ai_voice ที่เพิ่งสร้าง — ส่งครั้งเดียว ไม่เก็บในฐานข้อมูล (หน้าจอสร้าง blob URL เอง) */
+  voice?: { messageId: string; mimeType: string; base64: string };
   /** ทำตามที่ขอไม่ได้ — หน้าจอต้องบอกลูกค้า (เช่น ข้อเสนอเก่า/ยืนยันไปแล้ว) ไม่ถูกเก็บในแชต */
   notice?: "confirm_unavailable";
 };

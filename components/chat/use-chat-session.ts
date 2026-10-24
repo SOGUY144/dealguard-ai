@@ -9,6 +9,11 @@ import { buildScenario, type ScenarioName } from "@/lib/chat/scenarios";
 import { fetchChatTransport, fetchChatView, UnauthorizedError, type ChatTransport } from "@/lib/chat/transport";
 import { connectChat } from "@/lib/supabase/live";
 import { type ConnectLive, useLiveUpdates } from "@/components/live/use-live-updates";
+import { audioUrlFromBase64, browserRecorder, transcribeAudio, type Recorder } from "./voice-input";
+
+/** ไมค์ของแชตจริง — แยกออกมาให้ test ใส่ของปลอมได้ */
+export type LiveVoice = { recorder: () => Recorder; transcribe: (audio: Blob) => Promise<string> };
+export const browserVoice: LiveVoice = { recorder: browserRecorder, transcribe: transcribeAudio };
 
 export type LiveChat = {
   initialView: ChatView;
@@ -16,6 +21,8 @@ export type LiveChat = {
   /** ฟังข้อความใหม่ของแชตนี้ (ไม่ใส่ = Realtime ของ Supabase · null = ไม่ฟัง เช่นใน test) */
   connect?: ConnectLive | null;
   reload?: () => Promise<ChatView>;
+  /** ไม่ใส่ = ไมค์ของ browser + /api/transcribe */
+  voice?: LiveVoice;
 };
 
 type Options = {
@@ -37,6 +44,24 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
   );
   const [liveView, setLiveView] = useState(live?.initialView);
   const [pending, setPending] = useState(false);
+  /** ข้อความเสียงที่เพิ่งได้มา — เล่นให้เองหนึ่งครั้ง (ลูกค้าเพิ่งกดพูด) */
+  const [autoPlayId, setAutoPlayId] = useState<string | null>(null);
+
+  /** เสียงตอบจาก server (base64) → blob URL ติดกับข้อความ ai_voice */
+  function attachVoice(next: ChatView): ChatView {
+    const voice = next.voice;
+    if (!voice) return next;
+    try {
+      const url = audioUrlFromBase64(voice.base64, voice.mimeType);
+      setAutoPlayId(voice.messageId);
+      return {
+        ...next,
+        messages: next.messages.map((m) => (m.id === voice.messageId && m.type === "ai_voice" ? { ...m, audioUrl: url } : m)),
+      };
+    } catch {
+      return next;
+    }
+  }
   const inFlight = useRef(false);
   const router = useRouter();
 
@@ -75,7 +100,8 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     }
     try {
       const next = await (live.transport ?? fetchChatTransport)(action);
-      setLiveView((v) => (v ? mergeServerView(v, next) : next));
+      const withAudio = attachVoice(next);
+      setLiveView((v) => (v ? mergeServerView(v, withAudio) : withAudio));
       if (next.focus) onFocus(next.focus.messageId);
       return true;
     } catch (err) {
@@ -93,5 +119,5 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     }
   }
 
-  return { view, pending, dispatch };
+  return { view, pending, dispatch, autoPlayId };
 }

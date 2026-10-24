@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ChatScreenFromUrl } from "@/components/chat/chat-screen-from-url";
 import { warmUpIntentLlm } from "@/lib/ai/openai";
+import { voiceInputAvailable } from "@/lib/ai/transcribe";
 import { requireUser } from "@/lib/auth/dal";
 import { createChatDeps } from "@/lib/chat-server/deps";
 import { loadChatPage, toPublicProducts } from "@/lib/chat-server/pipeline";
@@ -45,6 +46,7 @@ async function BuyerChat() {
       buyerName={user.displayName}
       canLogout
       live={{ initialView }}
+      voiceInput={voiceInputAvailable()}
     />
   );
 }

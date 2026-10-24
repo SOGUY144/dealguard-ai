@@ -16,8 +16,12 @@ export function selectOffer(view: ChatView, messageId: string, offerId: Offer["i
 export function mergeServerView(prev: ChatView, next: ChatView): ChatView {
   const picked = new Map<string, Offer["id"]>();
   for (const m of prev.messages) if (m.type === "offers" && m.selectedId) picked.set(m.id, m.selectedId);
+  // เสียงตอบอยู่ในเครื่องเท่านั้น (blob URL) — server ไม่รู้ ต้องเก็บไว้เอง
+  const audio = new Map<string, string>();
+  for (const m of prev.messages) if (m.type === "ai_voice" && m.audioUrl) audio.set(m.id, m.audioUrl);
 
   const messages = next.messages.map((m): ChatMessage => {
+    if (m.type === "ai_voice") return audio.has(m.id) ? { ...m, audioUrl: audio.get(m.id) } : m;
     if (m.type !== "offers" || m.confirmed) return m;
     const selectedId = next.focus?.messageId === m.id ? next.focus.offerId : (m.selectedId ?? picked.get(m.id));
     return selectedId ? { ...m, selectedId } : m;

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { LogoutForm } from "@/components/auth/logout-button";
+import { ActiveChats } from "@/components/owner/active-chats";
 import { Deals } from "@/components/owner/deals";
 import { Escalations } from "@/components/owner/escalations";
 import { OwnerBottomNav, OwnerSidebar } from "@/components/owner/owner-nav";
@@ -41,7 +42,10 @@ async function OwnerDashboard() {
   const owner = await requireOwner();
   const now = new Date();
   // อ่านด้วยสิทธิ์ของ owner (RLS) ไม่ใช้ service role — ถ้า role ผิด ตัวเลขหลังบ้านจะไม่ออกเลย
-  const { deals, escalations, openCount, incompleteDeals } = await readOwnerData(await createSupabaseServerClient(), now);
+  const { deals, escalations, openCount, incompleteDeals, activeChats } = await readOwnerData(
+    await createSupabaseServerClient(),
+    now,
+  );
   const totals = summarize(deals);
   const date = thaiDate(now);
   const bell = openCount > 0 ? `การแจ้งเตือน ${openCount} เรื่อง` : "ไม่มีการแจ้งเตือน";
@@ -111,8 +115,9 @@ async function OwnerDashboard() {
             <div className="md:col-start-1">
               <StatTiles totals={totals} />
             </div>
-            <div className="md:col-start-2 md:row-span-3 md:row-start-1">
+            <div className="flex flex-col gap-[22px] md:col-start-2 md:row-span-3 md:row-start-1">
               <Escalations escalations={escalations} openCount={openCount} ownerName={storefront.ownerName} />
+              <ActiveChats chats={activeChats} />
             </div>
             <div className="md:col-start-1">
               <ProfitChart deals={deals} />

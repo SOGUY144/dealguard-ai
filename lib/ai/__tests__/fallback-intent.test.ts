@@ -122,5 +122,10 @@ describe("fallbackIntent", () => {
   it("เลขไทย ๑๒๕ / ๑,๐๐๐ อ่านได้เหมือนเลขอารบิก", () => {
     expect(parse("ขอ ๑๒๕ ได้ไหม ๑,๐๐๐ ชิ้น")).toMatchObject({ requestedPrice: 125, quantity: 1000 });
   });
+
+  it("ตัวเลขเป็นคำ (จากตัวแปลงเสียง) อ่านได้", () => {
+    expect(parse("สั่งหนึ่งพันห้าร้อยชิ้นครับ")).toMatchObject({ intent: "order", quantity: 1500 });
+    expect(parse("ขอร้อยยี่สิบห้าได้ไหม หนึ่งพันชิ้น")).toMatchObject({ requestedPrice: 125, quantity: 1000 });
+  });
 });
 

@@ -30,10 +30,11 @@ function connect(name: string, watches: Watch[]): ConnectLive {
   };
 }
 
-/** หน้าภาพรวมเถ้าแก่: ออเดอร์ใหม่ / เรื่องที่ส่งต่อ */
+/** หน้าภาพรวมเถ้าแก่: ออเดอร์ใหม่ / เรื่องที่ส่งต่อ / ข้อความใหม่ (แชตที่กำลังคุย) */
 export const connectOwnerDashboard = connect("owner-dashboard", [
   { table: "orders", event: "INSERT" },
   { table: "escalations", event: "*" },
+  { table: "messages", event: "INSERT" },
 ]);
 
 /** แชตหนึ่งห้อง (ทั้งฝั่งลูกค้าและเถ้าแก่): ข้อความใหม่ / โหมดเปลี่ยน */

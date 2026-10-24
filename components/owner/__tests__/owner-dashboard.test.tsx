@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MOCK_OFFERS } from "@/lib/chat/mock-offers";
 import type { OwnerDeal, OwnerEscalation } from "@/lib/owner/summary";
 import { summarize } from "@/lib/owner/summary";
+import { ActiveChats } from "../active-chats";
 import { Deals, signedBaht } from "../deals";
 import { Escalations } from "../escalations";
 import { OwnerBottomNav, OwnerSidebar } from "../owner-nav";
@@ -116,3 +117,27 @@ describe("OwnerSidebar / OwnerBottomNav", () => {
     expect(within(nav).getByText("สินค้า")).toBeInTheDocument();
   });
 });
+
+describe("ActiveChats (แชตที่กำลังคุย)", () => {
+  it("แต่ละแถว: ชื่อ · สถานะ · ข้อความล่าสุด · เวลา และพาไปหน้าแชต", () => {
+    render(
+      <ActiveChats
+        chats={[
+          { chatId: "c1", buyerName: "คุณนก", status: "ai", preview: "ขอ 125 ได้ไหม", at: "2026-10-24T03:00:00Z" },
+          { chatId: "c2", buyerName: "ลูกค้า 2", status: "owner", preview: "ส่งเรื่องให้เถ้าแก่ · ขอคืนเงิน", at: "2026-10-24T02:00:00Z" },
+        ]}
+      />,
+    );
+    const first = screen.getByRole("link", { name: /คุณนก/ });
+    expect(first).toHaveAttribute("href", "/owner/chats/c1");
+    expect(within(first).getByText("AI กำลังคุย")).toBeInTheDocument();
+    expect(within(first).getByText("10:00")).toBeInTheDocument();
+    expect(within(screen.getByRole("link", { name: /ลูกค้า 2/ })).getByText("เถ้าแก่ดูแล")).toBeInTheDocument();
+  });
+
+  it("ยังไม่มีแชต → บอกว่าไม่มี", () => {
+    render(<ActiveChats chats={[]} />);
+    expect(screen.getByText("ยังไม่มีแชตวันนี้")).toBeInTheDocument();
+  });
+});
+

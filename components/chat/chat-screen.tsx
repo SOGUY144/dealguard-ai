@@ -11,7 +11,8 @@ import { ChatThread, messageElementId } from "./chat-thread";
 import { Composer, type VoiceState } from "./composer";
 import { ProductDrawer, ProductSheet } from "./product-panel";
 import { StoreHeader } from "./store-header";
-import { useChatSession, type LiveChat } from "./use-chat-session";
+import { browserVoice, useChatSession, type LiveChat } from "./use-chat-session";
+import type { Recorder } from "./voice-input";
 
 type Props = {
   storefront: Storefront;
@@ -23,7 +24,12 @@ type Props = {
   canLogout?: boolean;
   /** แชตจริงผ่าน /api/chat (ไม่ใส่ = ตัวตอบจำลอง) — scenario ชนะเสมอ */
   live?: LiveChat;
+  /** server มีคีย์แปลงเสียง → ปุ่มไมค์ในแชตจริงใช้ได้ */
+  voiceInput?: boolean;
 };
+
+/** อัดได้นานสุดเท่านี้ แล้วส่งให้เอง */
+const MAX_RECORD_MS = 30_000;
 
 // เฟส 2: ยังไม่มีไมค์จริง จำลองว่าแปลงเสียงได้ประโยคเดโมนี้ (เฟส 6 ใช้ STT จริง)
 const MOCK_TRANSCRIPT = "ขอ 125 ได้ไหมคะ 1,000 ชิ้น ร้านข้างๆ ให้ 110";
@@ -38,9 +44,9 @@ function scrollToMessage(id: string) {
   });
 }
 
-export function ChatScreen({ storefront, products, buyerName, scenario, canLogout, live }: Props) {
+export function ChatScreen({ storefront, products, buyerName, scenario, canLogout, live, voiceInput = false }: Props) {
   const ctx: MockContext = { storefront, products, buyerName, now: () => new Date().toISOString() };
-  const { view: chat, pending, dispatch } = useChatSession({
+  const { view: chat, pending, dispatch, autoPlayId } = useChatSession({
     live: scenario ? undefined : live,
     scenario,
     mockContext: ctx,
@@ -49,10 +55,20 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const recorder = useRef<Recorder | null>(null);
+  const autoStop = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const liveMode = Boolean(live) && !scenario;
   const transcribeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
-  useEffect(() => () => clearTimeout(transcribeTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(transcribeTimer.current);
+      clearTimeout(autoStop.current);
+    },
+    [],
+  );
 
   const lastOf = <T extends string>(type: T) => [...chat.messages].reverse().find((m) => m.type === type);
   const activeCard = lastOf("product_card");
@@ -85,7 +101,46 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
     if (s.action.type === "select_offer") scrollToMessage(s.action.messageId);
   }
 
+  async function stopAndSend() {
+    clearTimeout(autoStop.current);
+    const rec = recorder.current;
+    recorder.current = null;
+    if (!rec || !live) return;
+    setVoiceState("transcribing");
+    try {
+      const audio = await rec.stop();
+      const text = (await (live.voice ?? browserVoice).transcribe(audio)).trim();
+      if (!text) {
+        setVoiceNotice("ไม่ได้ยินเสียงพูด ลองพูดอีกครั้ง หรือพิมพ์แทนได้เลยครับ");
+        return;
+      }
+      setVoiceState("idle");
+      await dispatch({ type: "send", text, inputMode: "voice" });
+    } catch {
+      setVoiceNotice("แปลงเสียงไม่สำเร็จ ลองอีกครั้ง หรือพิมพ์แทนได้เลยครับ");
+    } finally {
+      setVoiceState("idle");
+    }
+  }
+
+  async function onLiveMicPress() {
+    if (voiceState === "transcribing" || !live) return;
+    if (voiceState === "recording") return stopAndSend();
+    setVoiceNotice(null);
+    const rec = (live.voice ?? browserVoice).recorder();
+    try {
+      await rec.start();
+    } catch {
+      setVoiceNotice("ใช้ไมค์ไม่ได้ อนุญาตไมค์ในเบราว์เซอร์ หรือพิมพ์แทนได้เลยครับ");
+      return;
+    }
+    recorder.current = rec;
+    setVoiceState("recording");
+    autoStop.current = setTimeout(() => void stopAndSend(), MAX_RECORD_MS);
+  }
+
   function onMicPress() {
+    if (liveMode) return void onLiveMicPress();
     if (voiceState === "idle") {
       setVoiceState("recording");
       return;
@@ -137,6 +192,8 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
               buyerName={buyerName}
               pending={pending}
               mode={chat.mode}
+              autoPlayId={autoPlayId}
+              simulateVoice={!liveMode}
               today={live && !scenario ? new Date() : undefined}
               onSelectOffer={(messageId, offerId) => void dispatch({ type: "select_offer", messageId, offerId })}
               onConfirmOffer={(messageId, offerId) => void dispatch({ type: "confirm_offer", messageId, offerId })}
@@ -152,7 +209,8 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
             voiceState={voiceState}
             busy={pending}
             // แชตจริงยังไม่มีการแปลงเสียง — ห้ามส่งประโยคเดโมเข้าแชตของลูกค้า (เฟส 6 ใช้ STT จริง)
-            micAvailable={!live || Boolean(scenario)}
+            micAvailable={!liveMode || voiceInput}
+            voiceNotice={voiceNotice}
             onSend={(text) => dispatch({ type: "send", text, inputMode: "text" })}
             onSuggestion={onSuggestion}
             onToggleProducts={toggleProducts}

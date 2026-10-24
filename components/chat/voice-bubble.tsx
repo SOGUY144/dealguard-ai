@@ -7,15 +7,31 @@ import { formatDuration } from "@/lib/format";
 // ความสูงของแท่ง waveform จากไฟล์ดีไซน์ (มือถือจะถูกตัดด้วย overflow)
 const BARS = [8, 14, 22, 12, 26, 18, 10, 20, 26, 14, 22, 28, 16, 10, 20, 24, 12, 22, 18, 10, 26, 16, 22, 12, 18, 8, 14, 20, 10, 16, 8, 12, 6, 10];
 
-type Props = { durationSec: number; audioUrl?: string };
+type Props = {
+  durationSec: number;
+  audioUrl?: string;
+  /** เล่นเองทันที (ลูกค้าเพิ่งกดพูด) */
+  autoPlay?: boolean;
+  /** ไม่มีไฟล์เสียง: true = จำลองการเล่น (ตัวตอบจำลอง) · false = เล่นซ้ำไม่ได้แล้ว (แชตจริงหลังรีโหลด) */
+  simulate?: boolean;
+};
 
 /**
  * แคปซูลข้อความเสียง (พื้นเข้มจุดเดียวของดีไซน์) — มี audioUrl ก็เล่นเสียงจริง
  * ถ้ายังไม่มี (mock ก่อนเฟส 6) จะจำลองการเล่นตามความยาว
  */
-export function VoiceBubble({ durationSec, audioUrl }: Props) {
+export function VoiceBubble({ durationSec, audioUrl, autoPlay = false, simulate = true }: Props) {
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  // เสียงไม่ได้เก็บในฐานข้อมูล — รีโหลดแล้วเหลือแค่ transcript
+  const unavailable = !audioUrl && !simulate;
+
+  useEffect(() => {
+    if (!autoPlay || !audioUrl) return;
+    const audio = audioRef.current;
+    // browser อาจไม่ให้เล่นเอง (ยังไม่ได้แตะหน้าเว็บ) — ลูกค้ากดเล่นเองได้
+    if (audio) void tryPlay(audio).then(setPlaying);
+  }, [autoPlay, audioUrl]);
 
   useEffect(() => {
     if (!playing || audioUrl) return;
@@ -27,7 +43,7 @@ export function VoiceBubble({ durationSec, audioUrl }: Props) {
     const audio = audioRef.current;
     if (audio) {
       if (playing) audio.pause();
-      else void audio.play().catch(() => setPlaying(false));
+      else void tryPlay(audio).then((ok) => !ok && setPlaying(false));
     }
     setPlaying(!playing);
   }
@@ -46,8 +62,9 @@ export function VoiceBubble({ durationSec, audioUrl }: Props) {
       <span className="text-xs text-[var(--on-dark-muted)] md:text-[13px]">{formatDuration(durationSec)}</span>
       <button
         type="button"
-        aria-label={playing ? "หยุดข้อความเสียง" : "เล่นข้อความเสียง"}
+        aria-label={unavailable ? "เสียงนี้เล่นซ้ำไม่ได้แล้ว" : playing ? "หยุดข้อความเสียง" : "เล่นข้อความเสียง"}
         onClick={toggle}
+        disabled={unavailable}
         className="grid size-11 shrink-0 place-items-center rounded-full bg-white text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
       >
         {playing ? (
@@ -60,3 +77,14 @@ export function VoiceBubble({ durationSec, audioUrl }: Props) {
     </div>
   );
 }
+
+/** play() ของ browser เก่า (และ jsdom) อาจไม่คืน Promise — true = เล่นได้ */
+async function tryPlay(audio: HTMLAudioElement): Promise<boolean> {
+  try {
+    await audio.play();
+    return true;
+  } catch {
+    return false;
+  }
+}
+

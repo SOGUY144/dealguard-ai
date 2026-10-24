@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_OFFERS } from "@/lib/chat/mock-offers";
 import {
+  activeChatStatus,
   bangkokDayStart,
+  chatPreview,
   chartMax,
   escalationLabel,
   ownerInitials,
@@ -82,3 +84,28 @@ describe("ownerInitials / thaiDate", () => {
     expect(thaiDate(new Date("2026-10-23T18:00:00Z"))).toBe("24 ต.ค. 2569");
   });
 });
+
+describe("แชตที่กำลังคุย — สถานะ + ข้อความล่าสุด", () => {
+  const at = "2026-10-24T03:00:00Z";
+  it("สถานะ: เถ้าแก่ดูแล > ปิดดีลแล้ว > AI กำลังคุย", () => {
+    expect(activeChatStatus("human", [{ id: "1", at, type: "buyer_text", text: "x", inputMode: "text" }])).toBe("owner");
+    expect(
+      activeChatStatus("ai", [{ id: "1", at, type: "order_summary", orderId: "o", offer: MOCK_OFFERS[0], productName: "x" }]),
+    ).toBe("ordered");
+    expect(activeChatStatus("ai", [{ id: "1", at, type: "ai_text", text: "สวัสดี" }])).toBe("ai");
+  });
+
+  it("ข้อความล่าสุดแบบสั้น (ข้ามป้ายระบบ)", () => {
+    expect(chatPreview([{ id: "1", at, type: "buyer_text", text: "ขอ 125 ได้ไหม", inputMode: "text" }])).toBe("ขอ 125 ได้ไหม");
+    expect(chatPreview([{ id: "1", at, type: "offers", sku: "x", offers: MOCK_OFFERS }])).toBe("AI เสนอ 3 ทาง");
+    expect(chatPreview([{ id: "1", at, type: "owner_text", text: "เดี๋ยวโทรกลับ" }])).toBe("คุณ: เดี๋ยวโทรกลับ");
+    expect(
+      chatPreview([
+        { id: "1", at, type: "order_summary", orderId: "o", offer: MOCK_OFFERS[1], productName: "x" },
+        { id: "2", at, type: "system", kind: "price_locked" },
+      ]),
+    ).toBe("ปิดดีล ข้อ B · ฿135,000");
+    expect(chatPreview([])).toBe("");
+  });
+});
+

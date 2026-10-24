@@ -31,6 +31,10 @@ type Props = ThreadHandlers & {
   mode?: "ai" | "human";
   /** แชตจริง: ใช้เทียบว่าวันแรกของแชตคือ "วันนี้" ไหม (ไม่ใส่ = ตัวตอบจำลอง ถือว่าวันนี้) */
   today?: Date;
+  /** ข้อความเสียงที่เพิ่งได้มา — เล่นเองหนึ่งครั้ง */
+  autoPlayId?: string | null;
+  /** ตัวตอบจำลอง: ไม่มีไฟล์เสียงจริง จำลองการเล่นตามความยาว */
+  simulateVoice?: boolean;
 };
 
 /** element id ของข้อความ — ใช้เลื่อนกลับไปหาข้อเสนอ */
@@ -46,6 +50,8 @@ export function ChatThread({
   pending = false,
   mode = "ai",
   today,
+  autoPlayId = null,
+  simulateVoice = true,
   ...handlers
 }: Props) {
   const rows = groupMessages(messages);
@@ -73,6 +79,8 @@ export function ChatThread({
           lastOffersId={lastOffers?.id}
           busy={pending}
           locked={mode === "human"}
+          autoPlayId={autoPlayId}
+          simulateVoice={simulateVoice}
           {...handlers}
         />
       ))}
@@ -114,9 +122,22 @@ type RowProps = ThreadHandlers & {
   busy: boolean;
   /** ส่งเรื่องให้เถ้าแก่แล้ว */
   locked: boolean;
+  autoPlayId: string | null;
+  simulateVoice: boolean;
 };
 
-function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, locked, ...handlers }: RowProps) {
+function Row({
+  row,
+  storefront,
+  buyerName,
+  offersShown,
+  lastOffersId,
+  busy,
+  locked,
+  autoPlayId,
+  simulateVoice,
+  ...handlers
+}: RowProps) {
   const first = row.messages[0];
 
   if (row.kind === "notice") {
@@ -179,6 +200,8 @@ function Row({ row, storefront, buyerName, offersShown, lastOffersId, busy, lock
             offersShown={offersShown}
             stale={m.type === "offers" && (locked || m.id !== lastOffersId)}
             busy={busy}
+            autoPlay={m.id === autoPlayId}
+            simulateVoice={simulateVoice}
             {...handlers}
           />
         ))}
@@ -193,6 +216,8 @@ function AiItem({
   offersShown,
   stale,
   busy,
+  autoPlay,
+  simulateVoice,
   onSelectOffer,
   onConfirmOffer,
   onOpenProducts,
@@ -203,6 +228,8 @@ function AiItem({
   offersShown: number;
   stale: boolean;
   busy: boolean;
+  autoPlay: boolean;
+  simulateVoice: boolean;
 }) {
   switch (m.type) {
     case "ai_text":
@@ -225,7 +252,7 @@ function AiItem({
       // ข้อความเสียงต้องมี transcript ตามมาเสมอ (HANDOFF §2)
       return (
         <>
-          <VoiceBubble durationSec={m.durationSec} audioUrl={m.audioUrl} />
+          <VoiceBubble durationSec={m.durationSec} audioUrl={m.audioUrl} autoPlay={autoPlay} simulate={simulateVoice} />
           <AiBubble>{m.transcript}</AiBubble>
         </>
       );

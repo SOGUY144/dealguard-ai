@@ -15,8 +15,10 @@ type Props = {
   voiceState: VoiceState;
   /** รอคำตอบอยู่ — ส่งเพิ่มไม่ได้ (พิมพ์รอไว้ได้) */
   busy?: boolean;
-  /** false = ยังไม่มีการแปลงเสียงจริง (แชตจริงก่อนเฟส 6) ปุ่มไมค์กดไม่ได้ */
+  /** false = server ไม่มีคีย์แปลงเสียง ปุ่มไมค์กดไม่ได้ */
   micAvailable?: boolean;
+  /** ไมค์ใช้ไม่ได้ / แปลงเสียงไม่ได้ — บอกลูกค้าให้พิมพ์แทน */
+  voiceNotice?: string | null;
   /** คืน false = ส่งไม่สำเร็จ → คืนข้อความไว้ในช่องพิมพ์ */
   onSend: (text: string) => void | Promise<boolean>;
   onSuggestion: (suggestion: Suggestion) => void;
@@ -38,6 +40,7 @@ export function Composer({
   voiceState,
   busy = false,
   micAvailable = true,
+  voiceNotice = null,
   onSend,
   onSuggestion,
   onToggleProducts,
@@ -79,8 +82,15 @@ export function Composer({
         </div>
       )}
 
-      <p role="status" className={cn("px-1 text-xs text-accent-ink", voiceState === "idle" && "sr-only")}>
-        {VOICE_STATUS[voiceState]}
+      <p
+        role="status"
+        className={cn(
+          "px-1 text-xs",
+          voiceNotice && voiceState === "idle" ? "text-warn-ink" : "text-accent-ink",
+          voiceState === "idle" && !voiceNotice && "sr-only",
+        )}
+      >
+        {voiceState === "idle" ? voiceNotice : VOICE_STATUS[voiceState]}
       </p>
 
       <form

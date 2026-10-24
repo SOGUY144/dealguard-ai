@@ -87,10 +87,21 @@ describe("readOwnerData", () => {
     expect(refund.brief).toHaveLength(3);
   });
 
+  it("แชตที่กำลังคุย: แชตของลูกค้าวันนี้ พร้อมสถานะและข้อความล่าสุด (ไม่รวมแชตของบัญชีเถ้าแก่)", async () => {
+    const { activeChats } = await readOwnerData(owner.client);
+    const chat = await admin.from("chats").select("id").eq("buyer_id", buyer.id).single();
+    const mine = activeChats.find((c) => c.chatId === chat.data!.id)!;
+    expect(mine).toMatchObject({ buyerName: "คุณแดชบอร์ด", status: "owner" });
+    expect(mine.preview).toContain("ส่งเรื่องให้เถ้าแก่");
+    expect(activeChats.some((c) => c.buyerName === "เถ้าแก่ทดสอบ")).toBe(false);
+  });
+
   it("ลูกค้าเรียกได้ แต่ไม่เห็น margin ไม่เห็นเรื่องที่ส่งต่อ", async () => {
     const asBuyer = await readOwnerData(buyer.client);
     expect(asBuyer.deals).toEqual([]);
     expect(asBuyer.escalations).toEqual([]);
+    // อ่านได้แค่แชตของตัวเอง (RLS) — ไม่เห็นของคนอื่น
+    expect(asBuyer.activeChats.every((c) => c.buyerName === "คุณแดชบอร์ด")).toBe(true);
   });
 
   it("ออเดอร์ที่บัญชีเถ้าแก่สั่งเอง (ลองหน้าลูกค้า) ไม่นับเป็นดีลของ AI", async () => {
