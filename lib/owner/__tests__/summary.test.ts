@@ -5,6 +5,9 @@ import {
   bangkokDayStart,
   chatPreview,
   chartMax,
+  dealRangeStart,
+  groupDealsByDay,
+  parseDealRange,
   escalationLabel,
   ownerInitials,
   summarize,
@@ -109,3 +112,28 @@ describe("แชตที่กำลังคุย — สถานะ + ข�
   });
 });
 
+
+describe("ช่วงวันของหน้าดีลทั้งหมด", () => {
+  // 24 ต.ค. 2569 10:00 เวลาไทย
+  const now = new Date("2026-10-24T03:00:00Z");
+  it("วันนี้ / 7 วัน / 30 วัน นับรวมวันนี้ ตามเวลาไทย · ทั้งหมด = ไม่จำกัด", () => {
+    expect(dealRangeStart("today", now)?.toISOString()).toBe("2026-10-23T17:00:00.000Z");
+    expect(dealRangeStart("7d", now)?.toISOString()).toBe("2026-10-17T17:00:00.000Z");
+    expect(dealRangeStart("30d", now)?.toISOString()).toBe("2026-09-24T17:00:00.000Z");
+    expect(dealRangeStart("all", now)).toBeNull();
+  });
+  it("ค่าแปลกจาก URL → ทั้งหมด", () => {
+    expect(parseDealRange("abc")).toBe("all");
+    expect(parseDealRange(undefined)).toBe("all");
+    expect(parseDealRange("7d")).toBe("7d");
+  });
+  it("จัดกลุ่มตามวัน (ใหม่ก่อน)", () => {
+    const sampleDeal = deal(0, 45_000, "2026-10-24T03:00:00Z");
+    const at = (id: string, when: string) => ({ ...sampleDeal, id, at: when });
+    const groups = groupDealsByDay([at("a", "2026-10-23T02:00:00Z"), at("b", "2026-10-24T02:00:00Z"), at("c", "2026-10-24T05:00:00Z")]);
+    expect(groups.map((g) => [g.label, g.deals.map((d) => d.id)])).toEqual([
+      ["24 ต.ค. 2569", ["c", "b"]],
+      ["23 ต.ค. 2569", ["a"]],
+    ]);
+  });
+});

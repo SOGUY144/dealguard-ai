@@ -1,4 +1,4 @@
-// แปลงเสียงลูกค้าเป็นข้อความ (ปุ่มไมค์) — ลูกค้าที่ล็อกอินเท่านั้น · ไม่เก็บไฟล์เสียง
+// แปลงเสียงเป็นข้อความ (ปุ่มไมค์) — ลูกค้า (ส่งเข้าแชต) และเถ้าแก่ (พูดแทนพิมพ์ในหน้าแชตเถ้าแก่) · ไม่เก็บไฟล์เสียง
 import { NextResponse, type NextRequest } from "next/server";
 import { checkAudio, createTranscriber } from "@/lib/ai/transcribe";
 import { getCurrentUser } from "@/lib/auth/dal";
@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) return fail(401, "unauthorized");
-    if (user.role !== "buyer") return fail(403, "buyers_only");
     // แปลงเสียงคิดเงินต่อวินาที — กันยิงรัวๆ เหมือนแชต
     if (!(await allow(`stt:user:${user.id}`, LIMITS.chatPerUser))) return fail(429, "too_many_requests");
 

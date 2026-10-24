@@ -30,6 +30,7 @@ const deps = (): PipelineDeps => ({ store: new SupabaseChatStore(admin), storefr
 const seeded = merchant.products[0];
 const ORIGINAL: ProductSettingsForm = {
   sku: seeded.sku,
+  name: seeded.name,
   listPrice: seeded.listPrice,
   unitCost: seeded.unitCost,
   floorPrice: seeded.floorPrice,
@@ -82,7 +83,7 @@ async function offersFor(text: string) {
 describe("ตั้งค่าสินค้า (Owner-Settings)", () => {
   it("เถ้าแก่อ่านการตั้งค่าได้ครบ · ลูกค้าอ่านไม่ได้ (RLS)", async () => {
     const page = await readProductSettings(owner.client);
-    expect(page.products).toEqual([{ ...ORIGINAL, name: seeded.name }]);
+    expect(page.products).toEqual([ORIGINAL]);
     expect(page.gifts).toEqual([expect.objectContaining({ sku: "ADP-20W", name: "หัวชาร์จ 20W", enabled: true })]);
     expect(await readProductSettings(buyer.client)).toEqual({ products: [], gifts: [] });
   });
@@ -129,6 +130,7 @@ describe("ตั้งค่าสินค้า (Owner-Settings)", () => {
   it("เรียก RPC บันทึกตรงๆ ด้วยบัญชีเถ้าแก่ไม่ได้ (ต้องผ่าน server ที่เช็กสิทธิ์)", async () => {
     const { error } = await owner.client.rpc("save_product_settings", {
       p_sku: seeded.sku,
+      p_name: seeded.name,
       p_list_price: 150,
       p_unit_cost: 100,
       p_floor_price: 100,

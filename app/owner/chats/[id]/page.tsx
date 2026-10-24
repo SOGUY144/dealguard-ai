@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { OwnerChatFromServer } from "@/components/owner/owner-chat-from-server";
+import { voiceInputAvailable } from "@/lib/ai/transcribe";
 import { requireOwner } from "@/lib/auth/dal";
 import { storefront } from "@/lib/config/storefront";
 import { readOwnerChat } from "@/lib/owner/chat";
@@ -32,5 +33,5 @@ async function OwnerChat({ params }: { params: PageProps<"/owner/chats/[id]">["p
   // อ่านด้วยสิทธิ์ของ owner (RLS)
   const view = await readOwnerChat(await createSupabaseServerClient(), id);
   if (!view) notFound();
-  return <OwnerChatFromServer initial={view} ownerName={storefront.ownerName} />;
+  return <OwnerChatFromServer initial={view} ownerName={storefront.ownerName} voiceInput={voiceInputAvailable()} />;
 }

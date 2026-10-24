@@ -46,6 +46,7 @@ function scrollToMessage(id: string) {
 
 export function ChatScreen({ storefront, products, buyerName, scenario, canLogout, live, voiceInput = false }: Props) {
   const ctx: MockContext = { storefront, products, buyerName, now: () => new Date().toISOString() };
+  const productImages = Object.fromEntries(products.flatMap((p) => (p.imageUrl ? [[p.sku, p.imageUrl]] : [])));
   const { view: chat, pending, dispatch, autoPlayId } = useChatSession({
     live: scenario ? undefined : live,
     scenario,
@@ -194,6 +195,7 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
               mode={chat.mode}
               autoPlayId={autoPlayId}
               simulateVoice={!liveMode}
+              productImages={productImages}
               today={live && !scenario ? new Date() : undefined}
               onSelectOffer={(messageId, offerId) => void dispatch({ type: "select_offer", messageId, offerId })}
               onConfirmOffer={(messageId, offerId) => void dispatch({ type: "confirm_offer", messageId, offerId })}

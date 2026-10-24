@@ -114,10 +114,15 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
 
     case "accept_list": {
       const { offer } = result.offer;
+      const name = product?.name ?? "สินค้านี้";
+      // ขอต่ำกว่าราคาขาย แต่สินค้านี้ไม่มีทางลด (ไม่มีขั้นราคา / ส่วนลดจ่ายสด / ของแถม) — ห้ามขึ้นต้นว่า "ได้ครับ"
+      const refused = requestedPrice !== null && requestedPrice < offer.pricePerUnit;
       return {
         messages: [
           text(
-            `ได้ครับ${buyerName} ${product?.name ?? "สินค้านี้"} ${formatQty(offer.qty)} ชิ้น ราคา ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} กดยืนยันได้เลยครับ`,
+            refused
+              ? `ราคา ${formatQty(Math.ceil(requestedPrice))} ที่ ${formatQty(offer.qty)} ชิ้น${owner}ลดให้ไม่ได้ครับ${buyerName} ${name} ราคาส่ง ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} ถ้าสนใจกดยืนยันได้เลยครับ`
+              : `ได้ครับ${buyerName} ${name} ${formatQty(offer.qty)} ชิ้น ราคา ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} กดยืนยันได้เลยครับ`,
           ),
           { type: "offers", sku: skuOf(ctx), offers: [offer] },
         ],

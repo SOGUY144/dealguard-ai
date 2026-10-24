@@ -6,7 +6,7 @@ import { buttonClass, IconButton } from "@/components/ui/button";
 import type { PublicProduct } from "@/lib/chat/types";
 import { cn } from "@/lib/cn";
 import { formatBaht } from "@/lib/format";
-import { ProductThumb } from "./bubbles";
+import { ProductThumb } from "@/components/ui/product-thumb";
 
 type PanelProps = {
   products: PublicProduct[];
@@ -161,7 +161,7 @@ export function ProductSheet({ products, onAsk, onClose, busy = false }: PanelPr
 function ProductInfo({ product }: { product: PublicProduct }) {
   return (
     <div className="flex items-center gap-3">
-      <ProductThumb className="size-16 rounded-2xl" />
+      <ProductThumb src={product.imageUrl} className="size-16 rounded-2xl" />
       <span className="flex min-w-0 flex-col">
         <span className="text-xs text-muted">{product.sku}</span>
         <span className="text-[15px] leading-[1.4] font-semibold">{product.name}</span>

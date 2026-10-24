@@ -1,5 +1,6 @@
 import { LayoutGrid, Mic } from "lucide-react";
 import type { ReactNode } from "react";
+import { ProductThumb } from "@/components/ui/product-thumb";
 import { cn } from "@/lib/cn";
 import { formatBaht } from "@/lib/format";
 
@@ -41,13 +42,23 @@ export function BuyerBubble({ text, viaVoice }: { text: string; viaVoice: boolea
 }
 
 /** การ์ดสินค้าที่ลูกค้าเลือก ส่งเข้าแชตฝั่งลูกค้า */
-export function ProductCardMessage({ sku, name, listPrice }: { sku: string; name: string; listPrice: number }) {
+export function ProductCardMessage({
+  sku,
+  name,
+  listPrice,
+  imageUrl,
+}: {
+  sku: string;
+  name: string;
+  listPrice: number;
+  imageUrl?: string;
+}) {
   return (
     <article
       aria-label={name}
       className="flex w-[250px] max-w-[80%] items-center gap-2.5 rounded-[18px_6px_18px_18px] bg-accent-tint p-2 md:w-[320px] md:gap-3 md:p-2.5"
     >
-      <ProductThumb className="size-12 rounded-xl md:size-14 md:rounded-[14px]" />
+      <ProductThumb src={imageUrl} className="size-12 rounded-xl md:size-14 md:rounded-[14px]" />
       <span className="flex min-w-0 flex-col">
         <span className="hidden text-xs text-muted md:block">{sku}</span>
         <span className="text-sm font-semibold leading-[1.4] md:text-[15px]">{name}</span>
@@ -56,16 +67,5 @@ export function ProductCardMessage({ sku, name, listPrice }: { sku: string; name
         </span>
       </span>
     </article>
-  );
-}
-
-/** ยังไม่มีรูปสินค้าจริง — ใช้วงไล่สีตามดีไซน์ */
-export function ProductThumb({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("shrink-0", className)}
-      style={{ background: "radial-gradient(circle at 30% 25%, #FFFFFF 0, #EEE5FD 45%, #D6C8F8 100%)" }}
-    />
   );
 }

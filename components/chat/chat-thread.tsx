@@ -35,6 +35,8 @@ type Props = ThreadHandlers & {
   autoPlayId?: string | null;
   /** ตัวตอบจำลอง: ไม่มีไฟล์เสียงจริง จำลองการเล่นตามความยาว */
   simulateVoice?: boolean;
+  /** รูปสินค้าตาม sku (การ์ดสินค้าในแชตเก็บแค่ sku/ชื่อ/ราคา) */
+  productImages?: Record<string, string>;
 };
 
 /** element id ของข้อความ — ใช้เลื่อนกลับไปหาข้อเสนอ */
@@ -52,6 +54,7 @@ export function ChatThread({
   today,
   autoPlayId = null,
   simulateVoice = true,
+  productImages = {},
   ...handlers
 }: Props) {
   const rows = groupMessages(messages);
@@ -81,6 +84,7 @@ export function ChatThread({
           locked={mode === "human"}
           autoPlayId={autoPlayId}
           simulateVoice={simulateVoice}
+          productImages={productImages}
           {...handlers}
         />
       ))}
@@ -124,6 +128,7 @@ type RowProps = ThreadHandlers & {
   locked: boolean;
   autoPlayId: string | null;
   simulateVoice: boolean;
+  productImages: Record<string, string>;
 };
 
 function Row({
@@ -136,6 +141,7 @@ function Row({
   locked,
   autoPlayId,
   simulateVoice,
+  productImages,
   ...handlers
 }: RowProps) {
   const first = row.messages[0];
@@ -151,7 +157,7 @@ function Row({
           {formatClock(first.at)} · <span className="font-semibold text-ink">{buyerName} (คุณ)</span>
         </span>
         {first.type === "product_card" ? (
-          <ProductCardMessage sku={first.sku} name={first.name} listPrice={first.listPrice} />
+          <ProductCardMessage sku={first.sku} name={first.name} listPrice={first.listPrice} imageUrl={productImages[first.sku]} />
         ) : first.type === "buyer_text" ? (
           <BuyerBubble text={first.text} viaVoice={first.inputMode === "voice"} />
         ) : null}

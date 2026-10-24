@@ -58,6 +58,14 @@ describe("replyFor", () => {
     ]);
   });
 
+  it("ขอต่ำกว่าราคาขาย แต่สินค้านี้ลดไม่ได้เลย (ไม่มีขั้นราคา/จ่ายสด/ของแถม) → ไม่พูดว่า 'ได้ครับ' บอกราคาปกติตรงๆ", () => {
+    const offer = { ...MOCK_OFFERS[0], lever: "list" as const, label: "ราคาปกติ", pricePerUnit: 150, qty: 1000, total: 150_000 };
+    const { messages } = replyFor({ kind: "accept_list", offer: { offer, economics }, state }, { ...base, requestedPrice: 130 });
+    expect(texts(messages)).toEqual([
+      "ราคา 130 ที่ 1,000 ชิ้นเฮียชัยลดให้ไม่ได้ครับคุณนก สายชาร์จ USB-C 1 เมตร ราคาส่ง ฿150 ต่อชิ้น รวม ฿150,000 ถ้าสนใจกดยืนยันได้เลยครับ",
+    ]);
+  });
+
   it("ยังไม่รู้จำนวน → ถามจำนวน พร้อมบอกราคาขาย", () => {
     const { messages } = replyFor({ kind: "ask_quantity", sku: product.sku, state }, { ...base, qty: null });
     expect(messages).toEqual([

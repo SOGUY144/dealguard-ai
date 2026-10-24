@@ -12,6 +12,8 @@ export type Product = {
   volumeTiers: VolumeTier[];
   cashDiscountPct: number;
   defaultCreditDays: number;
+  /** รูปใน Storage (ไม่ใช้คิดราคา) */
+  imagePath?: string | null;
 };
 
 export type DeadStock = {

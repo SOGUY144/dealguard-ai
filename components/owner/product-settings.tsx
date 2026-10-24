@@ -1,13 +1,16 @@
 "use client";
 
 // หน้าตั้งค่าสินค้า (Owner-Settings.dc.html) — เถ้าแก่ตั้งราคา/ขั้นราคา/เงื่อนไขแลกส่วนลด แล้ว Deal Engine ใช้ตัวเลขนี้ทุกดีล
+// + เพิ่ม/ลบสินค้าและของแถม, รูปสินค้า, นำเข้าจาก Excel (ปุ่มตามดีไซน์ ส่วนหน้าต่างไม่มีในไฟล์ดีไซน์)
 // ข้อความแจ้งข้อผิด / "บันทึกแล้ว" / หมายเหตุเงื่อนไขส่งเถ้าแก่ ไม่มีในไฟล์ดีไซน์ แต่งเพิ่ม ต้องให้ทีมตรวจ
-import { Check, FileSpreadsheet, Lock, Plus, TriangleAlert, X } from "lucide-react";
+import { Check, FileSpreadsheet, Lock, Plus, Trash2, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState } from "react";
+import { ProductThumb } from "@/components/ui/product-thumb";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { formatBaht, formatQty } from "@/lib/format";
+import type { GiftForm, ImageResult, ImportResult, NewProduct } from "@/lib/owner/catalog-rules";
 import {
   MAX_TIERS,
   validateSettings,
@@ -17,12 +20,252 @@ import {
   type ProductSettingsPage,
   type SaveResult,
 } from "@/lib/owner/product-settings";
+import { AddItemDialog } from "./add-item-dialog";
+import { GiftPanel } from "./gift-panel";
+import { ImagePicker } from "./image-picker";
+import { ImportDialog } from "./import-dialog";
+import { Divider, Field, Hidden, Modal, StatusLine, Switch, type Status } from "./settings-ui";
 
-type Props = { page: ProductSettingsPage; save: (form: ProductSettingsForm) => Promise<SaveResult> };
+export type CatalogActions = {
+  save: (form: ProductSettingsForm) => Promise<SaveResult>;
+  addProduct: (p: NewProduct) => Promise<SaveResult>;
+  saveGift: (g: GiftForm, own?: string) => Promise<SaveResult>;
+  deleteItem: (kind: "product" | "gift", sku: string) => Promise<SaveResult>;
+  uploadImage: (form: FormData) => Promise<ImageResult>;
+  deleteImage: (kind: "product" | "gift", sku: string) => Promise<SaveResult>;
+  importCatalog: (items: { line: number; product: NewProduct }[]) => Promise<ImportResult>;
+};
+
+type Props = {
+  page: ProductSettingsPage;
+  actions: CatalogActions;
+  /** test ใส่ตัวย่อรูป / ตัวอ่าน Excel ปลอมได้ */
+  shrink?: (file: File) => Promise<Blob>;
+  readXlsx?: (file: File) => Promise<unknown[][]>;
+};
 type SavedProduct = ProductSettingsPage["products"][number];
+type Selection = { kind: "product" | "gift"; sku: string };
+type Dialog = null | "add" | "import" | { delete: Selection & { name: string } };
+
+export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
+  const router = useRouter();
+  const [picked, setPicked] = useState<Selection | null>(() =>
+    page.products[0] ? { kind: "product", sku: page.products[0].sku } : page.gifts[0] ? { kind: "gift", sku: page.gifts[0].sku } : null,
+  );
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [notice, setNotice] = useState<Status>({ kind: "idle" });
+
+  // ของที่เลือกถูกลบไปแล้ว (แท็บอื่น / เพิ่งลบ) → เลือกอันแรกแทน
+  const product = picked?.kind === "product" ? page.products.find((p) => p.sku === picked.sku) : undefined;
+  const gift = picked?.kind === "gift" ? page.gifts.find((g) => g.sku === picked.sku) : undefined;
+  const fallback: Selection | null = page.products[0]
+    ? { kind: "product", sku: page.products[0].sku }
+    : page.gifts[0]
+      ? { kind: "gift", sku: page.gifts[0].sku }
+      : null;
+  const shownProduct = product ?? (!gift && fallback?.kind === "product" ? page.products[0] : undefined);
+  const shownGift = gift ?? (!product && !shownProduct && fallback?.kind === "gift" ? page.gifts[0] : undefined);
+
+  const takenSkus = [...page.products.map((p) => p.sku), ...page.gifts.map((g) => g.sku)];
+  const refresh = () => router.refresh();
+
+  async function confirmDelete(target: Selection & { name: string }) {
+    setNotice({ kind: "saving" });
+    try {
+      const result = await actions.deleteItem(target.kind, target.sku);
+      if (!result.ok) {
+        setNotice({ kind: "error", message: result.errors.form ?? "ลบไม่สำเร็จ ลองใหม่อีกครั้ง" });
+        return;
+      }
+      setDialog(null);
+      setPicked(null);
+      setNotice({ kind: "saved", message: `ลบ${target.name}แล้ว` });
+      refresh();
+    } catch {
+      setNotice({ kind: "error", message: "ลบไม่สำเร็จ ลองใหม่อีกครั้ง" });
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-[22px]">
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col">
+          <h1 className="text-2xl leading-[1.35] font-semibold md:text-[28px]">สินค้าและราคา</h1>
+          <span className="text-sm text-muted">ตั้งครั้งเดียว AI ใช้ตัวเลขนี้ทุกดีล และแก้ตัวเลขเองไม่ได้</span>
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          <button type="button" onClick={() => setDialog("import")} className={buttonClass("secondary", "h-[46px] px-[18px] text-sm font-medium")}>
+            <FileSpreadsheet aria-hidden="true" size={17} />
+            นำเข้าจาก Excel
+          </button>
+          <button type="button" onClick={() => setDialog("add")} className={buttonClass("primary", "h-[46px] px-5 text-sm font-semibold")}>
+            <Plus aria-hidden="true" size={17} />
+            เพิ่มสินค้า
+          </button>
+        </div>
+      </header>
+      {notice.kind !== "idle" && !dialog && <StatusLine status={notice} />}
+
+      <div className="flex flex-wrap items-start gap-[22px]">
+        <ProductList
+          products={page.products}
+          gifts={page.gifts}
+          current={shownProduct ? { kind: "product", sku: shownProduct.sku } : shownGift ? { kind: "gift", sku: shownGift.sku } : null}
+          onChoose={(s) => {
+            setPicked(s);
+            setNotice({ kind: "idle" });
+          }}
+        />
+        {shownProduct ? (
+          <ProductPanel
+            key={shownProduct.sku}
+            saved={shownProduct}
+            gifts={page.gifts}
+            actions={actions}
+            onSaved={refresh}
+            onDelete={() => setDialog({ delete: { kind: "product", sku: shownProduct.sku, name: shownProduct.name } })}
+            shrink={shrink}
+          />
+        ) : shownGift ? (
+          <GiftPanel
+            key={shownGift.sku}
+            gift={shownGift}
+            actions={actions}
+            onSaved={refresh}
+            onDelete={() => setDialog({ delete: { kind: "gift", sku: shownGift.sku, name: shownGift.name } })}
+            shrink={shrink}
+          />
+        ) : (
+          <section className="glass flex min-w-0 flex-[999_1_520px] flex-col items-start gap-3 rounded-[26px] p-6">
+            <h2 className="text-lg font-semibold">ยังไม่มีสินค้าในร้าน</h2>
+            <p className="text-sm text-muted">กด &ldquo;เพิ่มสินค้า&rdquo; หรือ &ldquo;นำเข้าจาก Excel&rdquo; เพื่อเริ่มขาย</p>
+          </section>
+        )}
+      </div>
+
+      {dialog === "add" && (
+        <AddItemDialog
+          takenSkus={takenSkus}
+          addProduct={actions.addProduct}
+          addGift={(g) => actions.saveGift(g)}
+          onAdded={(kind, sku) => {
+            setDialog(null);
+            setPicked({ kind, sku });
+            setNotice({ kind: "saved", message: "เพิ่มแล้ว ตั้งราคาตามจำนวนและใส่รูปต่อได้เลย" });
+            refresh();
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "import" && (
+        <ImportDialog
+          existing={page.products.map((p) => ({ sku: p.sku, tiers: p.tiers }))}
+          giftSkus={page.gifts.map((g) => g.sku)}
+          current={page.products.map((p) => ({
+            sku: p.sku,
+            name: p.name,
+            listPrice: p.listPrice,
+            unitCost: p.unitCost,
+            floorPrice: p.floorPrice,
+            cashDiscountPct: p.cashDiscountPct,
+            defaultCreditDays: p.defaultCreditDays,
+          }))}
+          importCatalog={actions.importCatalog}
+          onImported={refresh}
+          onClose={() => setDialog(null)}
+          readXlsx={readXlsx}
+        />
+      )}
+      {dialog && typeof dialog === "object" && (
+        <Modal title={`ลบ${dialog.delete.name}?`} onClose={() => setDialog(null)}>
+          <p className="text-sm text-muted">
+            {dialog.delete.kind === "product"
+              ? "ลูกค้าจะไม่เห็นสินค้านี้อีก ข้อเสนอเก่าของสินค้านี้ยืนยันไม่ได้ ออเดอร์ที่ปิดไปแล้วยังอยู่ครบ ลบแล้วกู้คืนไม่ได้"
+              : "AI จะไม่ใช้ของชิ้นนี้เป็นของแถมอีก ออเดอร์ที่ปิดไปแล้วยังอยู่ครบ ลบแล้วกู้คืนไม่ได้"}
+          </p>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" onClick={() => setDialog(null)} className={buttonClass("secondary", "h-12 px-5 font-medium")}>
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDelete(dialog.delete)}
+              disabled={notice.kind === "saving"}
+              className={buttonClass("white", "h-12 px-6 font-semibold text-warn-ink")}
+            >
+              <Trash2 aria-hidden="true" size={16} />
+              ลบเลย
+            </button>
+          </div>
+          <StatusLine status={notice} className="text-right" />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────── รายการด้านซ้าย ─────────────────────────
+
+function ProductList({
+  products,
+  gifts,
+  current,
+  onChoose,
+}: {
+  products: SavedProduct[];
+  gifts: GiftInfo[];
+  current: Selection | null;
+  onChoose: (s: Selection) => void;
+}) {
+  const item = (s: Selection, name: string, detail: string, imageUrl?: string) => {
+    const active = current?.kind === s.kind && current.sku === s.sku;
+    return (
+      <button
+        key={`${s.kind}:${s.sku}`}
+        type="button"
+        aria-current={active ? "true" : undefined}
+        onClick={() => onChoose(s)}
+        className={cn(
+          "flex items-center gap-3 rounded-[18px] p-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+          active ? "bg-accent-tint/85 shadow-[0_0_0_2px_var(--accent)]" : "hover:bg-white/60",
+        )}
+      >
+        <ProductThumb src={imageUrl} className="size-12 rounded-[14px]" />
+        <span className="flex min-w-0 flex-auto flex-col">
+          <span className="text-sm leading-[1.4] font-semibold">{name}</span>
+          <span className="text-xs text-muted">{detail}</span>
+        </span>
+      </button>
+    );
+  };
+  return (
+    <section aria-label="รายการสินค้า" className="glass flex min-w-0 flex-[1_1_260px] flex-col gap-1.5 rounded-3xl p-2.5 md:max-w-[320px]">
+      {products.map((p) =>
+        item(
+          { kind: "product", sku: p.sku },
+          p.name,
+          `${formatBaht(p.listPrice)} · พื้น ${formatBaht(p.floorPrice)}${p.aiEnabled ? "" : " · AI ไม่ต่อราคา"}`,
+          p.imageUrl,
+        ),
+      )}
+      {gifts.map((g) =>
+        item(
+          { kind: "gift", sku: g.sku },
+          g.name,
+          `${g.enabled ? "ใช้เป็นของแถม" : "ไม่ใช้เป็นของแถม"} · เหลือ ${formatQty(g.qtyAvailable)} ชิ้น`,
+          g.imageUrl,
+        ),
+      )}
+      {products.length + gifts.length === 0 && <p className="p-3 text-sm text-muted">ยังไม่มีสินค้า</p>}
+    </section>
+  );
+}
+
+// ───────────────────────── ตั้งค่าสินค้าหนึ่งตัว ─────────────────────────
 
 /** ค่าในช่องกรอกเป็นตัวอักษร (ลบจนว่างได้) — แปลงเป็นตัวเลขตอนตรวจ/บันทึก */
 type Draft = {
+  name: string;
   listPrice: string;
   unitCost: string;
   floorPrice: string;
@@ -40,6 +283,7 @@ const toNum = (s: string) => (s.trim() === "" ? Number.NaN : Number(s.replace(/,
 
 function toDraft(p: SavedProduct): Draft {
   return {
+    name: p.name,
     listPrice: String(p.listPrice),
     unitCost: String(p.unitCost),
     floorPrice: String(p.floorPrice),
@@ -56,6 +300,7 @@ function toDraft(p: SavedProduct): Draft {
 function toForm(sku: string, d: Draft): ProductSettingsForm {
   return {
     sku,
+    name: d.name,
     listPrice: toNum(d.listPrice),
     unitCost: toNum(d.unitCost),
     floorPrice: toNum(d.floorPrice),
@@ -69,49 +314,47 @@ function toForm(sku: string, d: Draft): ProductSettingsForm {
   };
 }
 
-type Status = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
-
-export function ProductSettings({ page, save }: Props) {
-  const router = useRouter();
-  const [sku, setSku] = useState(page.products[0]?.sku ?? "");
-  const saved = page.products.find((p) => p.sku === sku);
-  const [draft, setDraft] = useState<Draft | null>(() => (saved ? toDraft(saved) : null));
+function ProductPanel({
+  saved,
+  gifts,
+  actions,
+  onSaved,
+  onDelete,
+  shrink,
+}: {
+  saved: SavedProduct;
+  gifts: GiftInfo[];
+  actions: CatalogActions;
+  onSaved: () => void;
+  onDelete: () => void;
+  shrink?: (file: File) => Promise<Blob>;
+}) {
+  const [draft, setDraft] = useState<Draft>(() => toDraft(saved));
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  const form = useMemo(() => (draft ? toForm(sku, draft) : null), [draft, sku]);
-  const errors = useMemo(() => ({ ...serverErrors, ...(form ? validateSettings(form) : {}) }), [form, serverErrors]);
-
-  if (!saved || !draft || !form) {
-    return <p className="text-sm text-muted">ยังไม่มีสินค้าในร้าน</p>;
-  }
+  const form = useMemo(() => toForm(saved.sku, draft), [draft, saved.sku]);
+  const errors = useMemo(() => ({ ...serverErrors, ...validateSettings(form) }), [form, serverErrors]);
 
   const edit = (patch: Partial<Draft>) => {
-    setDraft((d) => (d ? { ...d, ...patch } : d));
+    setDraft((d) => ({ ...d, ...patch }));
     setServerErrors({});
     if (status.kind !== "saving") setStatus({ kind: "idle" });
   };
   const editTier = (key: number, patch: Partial<Draft["tiers"][number]>) =>
     edit({ tiers: draft.tiers.map((t) => (t.key === key ? { ...t, ...patch } : t)) });
 
-  function choose(next: SavedProduct) {
-    setSku(next.sku);
-    setDraft(toDraft(next));
-    setServerErrors({});
-    setStatus({ kind: "idle" });
-  }
-
   async function onSave() {
-    if (!form || Object.keys(validateSettings(form)).length > 0) {
+    if (Object.keys(validateSettings(form)).length > 0) {
       setStatus({ kind: "error", message: "ยังบันทึกไม่ได้ แก้ช่องที่ขึ้นสีส้มก่อน" });
       return;
     }
     setStatus({ kind: "saving" });
     try {
-      const result = await save(form);
+      const result = await actions.save(form);
       if (result.ok) {
-        setStatus({ kind: "saved" });
-        router.refresh();
+        setStatus({ kind: "saved", message: "บันทึกแล้ว แชตลูกค้าใช้ราคาใหม่ตั้งแต่ข้อความถัดไป" });
+        onSaved();
         return;
       }
       const { form: formError, ...fieldErrors } = result.errors;
@@ -126,362 +369,200 @@ export function ProductSettings({ page, save }: Props) {
   const lastTier = form.tiers.at(-1);
 
   return (
-    <div className="flex flex-col gap-[22px]">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-col">
-          <h1 className="text-2xl leading-[1.35] font-semibold md:text-[28px]">สินค้าและราคา</h1>
-          <span className="text-sm text-muted">ตั้งครั้งเดียว AI ใช้ตัวเลขนี้ทุกดีล และแก้ตัวเลขเองไม่ได้</span>
-        </div>
-        {/* ยังไม่อยู่ใน MVP (SKILL §11.5) — แสดงตามดีไซน์แต่กดไม่ได้ */}
-        <div className="flex flex-wrap gap-2.5">
-          <button type="button" disabled className={buttonClass("secondary", "h-[46px] px-[18px] text-sm font-medium")}>
-            <FileSpreadsheet aria-hidden="true" size={17} />
-            นำเข้าจาก Excel
-          </button>
-          <button type="button" disabled className={buttonClass("primary", "h-[46px] px-5 text-sm font-semibold")}>
-            <Plus aria-hidden="true" size={17} />
-            เพิ่มสินค้า
-          </button>
-        </div>
-      </header>
-
-      <div className="flex flex-wrap items-start gap-[22px]">
-        <ProductList products={page.products} gifts={page.gifts} current={sku} onChoose={choose} />
-
-        <section
-          aria-label={`ตั้งค่า${saved.name}`}
-          className="glass flex min-w-0 flex-[999_1_520px] flex-col gap-6 rounded-[26px] px-4 py-5 md:px-6 md:py-[22px]"
-        >
-          <div className="flex flex-wrap items-center gap-3.5">
-            <Thumb size="size-14 rounded-2xl" />
-            <div className="flex min-w-0 flex-auto flex-col">
-              <h2 className="text-xl leading-[1.4] font-semibold">{saved.name}</h2>
-              <span className="text-[13px] text-muted">SKU {saved.sku}</span>
-            </div>
-            <button
-              type="button"
-              aria-pressed={draft.aiEnabled}
-              onClick={() => edit({ aiEnabled: !draft.aiEnabled })}
-              className="flex h-11 items-center gap-2.5 rounded-full border border-white/90 bg-white/70 pr-2 pl-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              ให้ AI ต่อราคาสินค้านี้
-              <Switch on={draft.aiEnabled} />
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-3.5">
-            <h3 className="text-base font-semibold">ราคา</h3>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(170px,100%),1fr))] gap-3.5">
-              <Field label="ราคาขาย" prefix="฿" value={draft.listPrice} onChange={(v) => edit({ listPrice: v })} error={errors.listPrice} />
-              <Field
-                label={<>ต้นทุน <Hidden /></>}
-                prefix="฿"
-                value={draft.unitCost}
-                onChange={(v) => edit({ unitCost: v })}
-                error={errors.unitCost}
-              />
-              <Field
-                label={
-                  <>
-                    <Lock aria-hidden="true" size={13} className="text-accent-ink" />
-                    ราคาพื้น <Hidden />
-                  </>
-                }
-                prefix="฿"
-                value={draft.floorPrice}
-                onChange={(v) => edit({ floorPrice: v })}
-                error={errors.floorPrice}
-                emphasis
-              />
-            </div>
-            <PriceRangeBar cost={form.unitCost} floor={form.floorPrice} list={form.listPrice} />
-          </div>
-
-          <Divider />
-
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2.5">
-              <h3 className="text-base font-semibold">ราคาตามจำนวน</h3>
-              {tierBelowFloor ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-bg px-3 py-1 text-xs font-semibold text-warn-ink">
-                  <TriangleAlert aria-hidden="true" size={13} />
-                  มีขั้นที่ต่ำกว่าราคาพื้น
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-bg px-3 py-1 text-xs font-semibold text-ok-ink">
-                  <Check aria-hidden="true" size={13} />
-                  ทุกขั้นไม่ต่ำกว่าราคาพื้น
-                </span>
-              )}
-            </div>
-            <ul className="flex flex-col gap-2">
-              {draft.tiers.map((t, i) => (
-                <TierRow
-                  key={t.key}
-                  minQty={t.minQty}
-                  price={t.price}
-                  margin={form.tiers[i].price - form.unitCost}
-                  qtyError={errors[`tiers.${i}.minQty`]}
-                  priceError={errors[`tiers.${i}.price`]}
-                  onQty={(v) => editTier(t.key, { minQty: v })}
-                  onPrice={(v) => editTier(t.key, { price: v })}
-                  onRemove={() => edit({ tiers: draft.tiers.filter((x) => x.key !== t.key) })}
-                />
-              ))}
-            </ul>
-            {errors.tiers && <p className="text-xs text-warn-ink">{errors.tiers}</p>}
-            <button
-              type="button"
-              disabled={draft.tiers.length >= MAX_TIERS}
-              onClick={() =>
-                edit({
-                  tiers: [
-                    ...draft.tiers,
-                    {
-                      key: nextKey++,
-                      minQty: String(Number.isFinite(lastTier?.minQty) ? (lastTier?.minQty ?? 0) * 2 || 100 : 100),
-                      price: draft.floorPrice,
-                    },
-                  ],
-                })
-              }
-              className="h-10 self-start rounded-full border border-dashed border-[#B9A5F0] px-4 text-[13px] font-medium text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
-            >
-              + เพิ่มขั้น
-            </button>
-          </div>
-
-          <Divider />
-
-          <div className="flex flex-col gap-3">
-            <h3 className="text-base font-semibold">ส่วนลดต้องแลกกับอะไร</h3>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(170px,100%),1fr))] gap-3.5">
-              <Field label="ลดเพิ่มเมื่อจ่ายสด" suffix="%" value={draft.cashDiscountPct} onChange={(v) => edit({ cashDiscountPct: v })} error={errors.cashDiscountPct} />
-              <Field label="เครดิตปกติ" suffix="วัน" value={draft.defaultCreditDays} onChange={(v) => edit({ defaultCreditDays: v })} error={errors.defaultCreditDays} />
-              <Field
-                label="ต้นทุนเงินทุน"
-                suffix="% ต่อปี"
-                value={draft.costOfCapitalPct}
-                onChange={(v) => edit({ costOfCapitalPct: v })}
-                error={errors.costOfCapitalPct}
-                hint="ใช้คิดว่าลูกค้าจ่ายสดคุ้มกับร้านแค่ไหน"
-              />
-            </div>
-            {page.gifts.map((g) => (
-              <GiftRow
-                key={g.sku}
-                gift={g}
-                on={draft.gifts[g.sku] ?? g.enabled}
-                onToggle={() => edit({ gifts: { ...draft.gifts, [g.sku]: !(draft.gifts[g.sku] ?? g.enabled) } })}
-              />
-            ))}
-          </div>
-
-          <Divider />
-
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-3 text-base font-semibold">ส่งให้เถ้าแก่ตัดสินเมื่อ</legend>
-            <EscalationValue value={draft.escalationDealValue} onChange={(v) => edit({ escalationDealValue: v })} error={errors.escalationDealValue} />
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2">
-              {["ลูกค้าขอคืนเงินหรือร้องเรียน", "ยืนยันราคาต่ำกว่าพื้นครบ 3 รอบ", "มีคนพยายามหลอกระบบซ้ำ"].map((label) => (
-                <label key={label} className="flex min-h-11 items-center gap-2.5 rounded-[14px] bg-white/70 px-3 py-2 text-sm">
-                  <input type="checkbox" checked disabled readOnly className="size-5 flex-none accent-accent" />
-                  {label}
-                </label>
-              ))}
-            </div>
-            {/* กฎความปลอดภัย (SKILL §6.8): เรื่องคืนเงิน/ต่ำกว่าพื้น/หลอกระบบต้องถึงเถ้าแก่เสมอ */}
-            <span className="text-xs text-muted">3 ข้อนี้เปิดไว้เสมอ เพื่อให้เรื่องสำคัญถึงเถ้าแก่ทุกครั้ง</span>
-          </fieldset>
-
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <span className="flex-[1_1_240px] text-[13px] text-muted">บันทึกแล้วมีผลกับแชตลูกค้าทันที</span>
-            <button
-              type="button"
-              onClick={() => choose(saved)}
-              disabled={status.kind === "saving"}
-              className={buttonClass("secondary", "h-12 px-5 font-medium")}
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              aria-busy={status.kind === "saving"}
-              disabled={status.kind === "saving"}
-              className={buttonClass("primary", "h-12 px-7 font-semibold")}
-            >
-              บันทึก
-            </button>
-          </div>
-          <div aria-live="polite" className="-mt-3 text-right text-sm empty:hidden">
-            {status.kind === "saving" && <span className="text-muted">กำลังบันทึก…</span>}
-            {status.kind === "saved" && (
-              <span role="status" className="text-ok-ink">
-                บันทึกแล้ว แชตลูกค้าใช้ราคาใหม่ตั้งแต่ข้อความถัดไป
-              </span>
-            )}
-            {status.kind === "error" && (
-              <span role="alert" className="text-warn-ink">
-                {status.message}
-              </span>
-            )}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function ProductList({
-  products,
-  gifts,
-  current,
-  onChoose,
-}: {
-  products: SavedProduct[];
-  gifts: GiftInfo[];
-  current: string;
-  onChoose: (p: SavedProduct) => void;
-}) {
-  return (
-    <section aria-label="รายการสินค้า" className="glass flex min-w-0 flex-[1_1_260px] flex-col gap-1.5 rounded-3xl p-2.5 md:max-w-[320px]">
-      {products.map((p) => {
-        const active = p.sku === current;
-        return (
-          <button
-            key={p.sku}
-            type="button"
-            aria-current={active ? "true" : undefined}
-            onClick={() => onChoose(p)}
-            className={cn(
-              "flex items-center gap-3 rounded-[18px] p-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-              active && "bg-accent-tint/85 shadow-[0_0_0_2px_var(--accent)]",
-            )}
-          >
-            <Thumb size="size-12 rounded-[14px]" />
-            <span className="flex min-w-0 flex-auto flex-col">
-              <span className="text-sm leading-[1.4] font-semibold">{p.name}</span>
-              <span className="text-xs text-muted">
-                {formatBaht(p.listPrice)} · พื้น {formatBaht(p.floorPrice)}
-                {!p.aiEnabled && " · AI ไม่ต่อราคา"}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-      {gifts.map((g) => (
-        <div key={g.sku} className="flex items-center gap-3 rounded-[18px] p-2.5">
-          <Thumb size="size-12 rounded-[14px]" />
-          <span className="flex min-w-0 flex-auto flex-col">
-            <span className="text-sm leading-[1.4] font-semibold">{g.name}</span>
-            <span className="text-xs text-muted">
-              {g.enabled ? "ใช้เป็นของแถม" : "ไม่ใช้เป็นของแถม"} · เหลือ {formatQty(g.qtyAvailable)} ชิ้น
-            </span>
-          </span>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function Thumb({ size }: { size: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("flex-none", size)}
-      style={{ background: "radial-gradient(circle at 30% 25%, #FFFFFF 0, #EEE5FD 45%, #D6C8F8 100%)" }}
-    />
-  );
-}
-
-function Hidden() {
-  return <span className="font-normal text-muted">(ลูกค้าไม่เห็น)</span>;
-}
-
-function Divider() {
-  return <div aria-hidden="true" className="h-px bg-line/90" />;
-}
-
-function Switch({ on }: { on: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("relative inline-block h-[26px] w-11 flex-none rounded-full transition-colors", on ? "bg-accent" : "bg-line")}
+    <section
+      aria-label={`ตั้งค่า${saved.name}`}
+      className="glass flex min-w-0 flex-[999_1_520px] flex-col gap-6 rounded-[26px] px-4 py-5 md:px-6 md:py-[22px]"
     >
-      <span
-        className={cn(
-          "absolute top-[3px] size-5 rounded-full bg-white shadow-[0_2px_4px_rgba(0,0,0,0.15)] transition-[left] motion-reduce:transition-none",
-          on ? "left-[21px]" : "left-[3px]",
-        )}
-      />
-    </span>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  error,
-  prefix,
-  suffix,
-  hint,
-  emphasis,
-}: {
-  label: ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-  prefix?: string;
-  suffix?: string;
-  hint?: string;
-  emphasis?: boolean;
-}) {
-  const id = useId();
-  const describedBy = [error && `${id}-error`, hint && `${id}-hint`].filter(Boolean).join(" ") || undefined;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="flex items-center gap-1.5 text-[13px] font-medium">
-        {label}
-      </label>
-      <div
-        className={cn(
-          "flex h-12 items-center gap-1.5 rounded-[14px] px-3.5 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-accent",
-          error
-            ? "border-[1.5px] border-warn bg-warn-bg"
-            : emphasis
-              ? "border-[1.5px] border-[#B9A5F0] bg-accent-tint/85"
-              : "border border-line bg-white/85",
-        )}
-      >
-        {prefix && <span className={emphasis ? "text-accent-ink" : "text-muted"}>{prefix}</span>}
-        <input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy}
-          className={cn(
-            "h-11 min-w-0 flex-auto bg-transparent text-base outline-none",
-            emphasis ? "font-semibold text-accent-strong" : "font-medium",
-          )}
-        />
-        {suffix && <span className="whitespace-nowrap text-muted">{suffix}</span>}
+      <div className="flex flex-wrap items-center gap-3.5">
+        <ProductThumb src={saved.imageUrl} className="size-14 rounded-2xl" />
+        <div className="flex min-w-0 flex-auto flex-col">
+          <h2 className="text-xl leading-[1.4] font-semibold">{saved.name}</h2>
+          <span className="text-[13px] text-muted">SKU {saved.sku}</span>
+        </div>
+        <button
+          type="button"
+          aria-pressed={draft.aiEnabled}
+          onClick={() => edit({ aiEnabled: !draft.aiEnabled })}
+          className="flex h-11 items-center gap-2.5 rounded-full border border-white/90 bg-white/70 pr-2 pl-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          ให้ AI ต่อราคาสินค้านี้
+          <Switch on={draft.aiEnabled} />
+        </button>
       </div>
-      {error && (
-        <span id={`${id}-error`} className="text-xs text-warn-ink">
-          {error}
-        </span>
-      )}
-      {hint && (
-        <span id={`${id}-hint`} className="text-xs text-muted">
-          {hint}
-        </span>
-      )}
-    </div>
+
+      <div className="flex flex-col gap-3.5">
+        <h3 className="text-base font-semibold">สินค้า</h3>
+        <Field label="ชื่อสินค้า" type="text" maxLength={80} value={draft.name} onChange={(v) => edit({ name: v })} error={errors.name} />
+        <ImagePicker
+          kind="product"
+          sku={saved.sku}
+          name={saved.name}
+          imageUrl={saved.imageUrl}
+          upload={actions.uploadImage}
+          remove={actions.deleteImage}
+          onChanged={onSaved}
+          shrink={shrink}
+        />
+      </div>
+
+      <Divider />
+
+      <div className="flex flex-col gap-3.5">
+        <h3 className="text-base font-semibold">ราคา</h3>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(170px,100%),1fr))] gap-3.5">
+          <Field label="ราคาขาย" prefix="฿" value={draft.listPrice} onChange={(v) => edit({ listPrice: v })} error={errors.listPrice} />
+          <Field
+            label={<>ต้นทุน <Hidden /></>}
+            prefix="฿"
+            value={draft.unitCost}
+            onChange={(v) => edit({ unitCost: v })}
+            error={errors.unitCost}
+          />
+          <Field
+            label={
+              <>
+                <Lock aria-hidden="true" size={13} className="text-accent-ink" />
+                ราคาพื้น <Hidden />
+              </>
+            }
+            prefix="฿"
+            value={draft.floorPrice}
+            onChange={(v) => edit({ floorPrice: v })}
+            error={errors.floorPrice}
+            emphasis
+          />
+        </div>
+        <PriceRangeBar cost={form.unitCost} floor={form.floorPrice} list={form.listPrice} />
+      </div>
+
+      <Divider />
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <h3 className="text-base font-semibold">ราคาตามจำนวน</h3>
+          {tierBelowFloor ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-bg px-3 py-1 text-xs font-semibold text-warn-ink">
+              <TriangleAlert aria-hidden="true" size={13} />
+              มีขั้นที่ต่ำกว่าราคาพื้น
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-bg px-3 py-1 text-xs font-semibold text-ok-ink">
+              <Check aria-hidden="true" size={13} />
+              ทุกขั้นไม่ต่ำกว่าราคาพื้น
+            </span>
+          )}
+        </div>
+        {draft.tiers.length === 0 && <p className="text-sm text-muted">ยังไม่มีขั้นราคา AI จะไม่เสนอข้อ &ldquo;ซื้อเยอะ&rdquo;</p>}
+        <ul className="flex flex-col gap-2">
+          {draft.tiers.map((t, i) => (
+            <TierRow
+              key={t.key}
+              minQty={t.minQty}
+              price={t.price}
+              margin={form.tiers[i].price - form.unitCost}
+              qtyError={errors[`tiers.${i}.minQty`]}
+              priceError={errors[`tiers.${i}.price`]}
+              onQty={(v) => editTier(t.key, { minQty: v })}
+              onPrice={(v) => editTier(t.key, { price: v })}
+              onRemove={() => edit({ tiers: draft.tiers.filter((x) => x.key !== t.key) })}
+            />
+          ))}
+        </ul>
+        {errors.tiers && <p className="text-xs text-warn-ink">{errors.tiers}</p>}
+        <button
+          type="button"
+          disabled={draft.tiers.length >= MAX_TIERS}
+          onClick={() =>
+            edit({
+              tiers: [
+                ...draft.tiers,
+                {
+                  key: nextKey++,
+                  minQty: String(Number.isFinite(lastTier?.minQty) ? (lastTier?.minQty ?? 0) * 2 || 100 : 100),
+                  price: draft.floorPrice,
+                },
+              ],
+            })
+          }
+          className="h-10 self-start rounded-full border border-dashed border-[#B9A5F0] px-4 text-[13px] font-medium text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+        >
+          + เพิ่มขั้น
+        </button>
+      </div>
+
+      <Divider />
+
+      <div className="flex flex-col gap-3">
+        <h3 className="text-base font-semibold">ส่วนลดต้องแลกกับอะไร</h3>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(170px,100%),1fr))] gap-3.5">
+          <Field label="ลดเพิ่มเมื่อจ่ายสด" suffix="%" value={draft.cashDiscountPct} onChange={(v) => edit({ cashDiscountPct: v })} error={errors.cashDiscountPct} />
+          <Field label="เครดิตปกติ" suffix="วัน" value={draft.defaultCreditDays} onChange={(v) => edit({ defaultCreditDays: v })} error={errors.defaultCreditDays} />
+          <Field
+            label="ต้นทุนเงินทุน"
+            suffix="% ต่อปี"
+            value={draft.costOfCapitalPct}
+            onChange={(v) => edit({ costOfCapitalPct: v })}
+            error={errors.costOfCapitalPct}
+            hint="ใช้คิดว่าลูกค้าจ่ายสดคุ้มกับร้านแค่ไหน"
+          />
+        </div>
+        {gifts.map((g) => (
+          <GiftRow
+            key={g.sku}
+            gift={g}
+            on={draft.gifts[g.sku] ?? g.enabled}
+            onToggle={() => edit({ gifts: { ...draft.gifts, [g.sku]: !(draft.gifts[g.sku] ?? g.enabled) } })}
+          />
+        ))}
+      </div>
+
+      <Divider />
+
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-3 text-base font-semibold">ส่งให้เถ้าแก่ตัดสินเมื่อ</legend>
+        <EscalationValue value={draft.escalationDealValue} onChange={(v) => edit({ escalationDealValue: v })} error={errors.escalationDealValue} />
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2">
+          {["ลูกค้าขอคืนเงินหรือร้องเรียน", "ยืนยันราคาต่ำกว่าพื้นครบ 3 รอบ", "มีคนพยายามหลอกระบบซ้ำ"].map((label) => (
+            <label key={label} className="flex min-h-11 items-center gap-2.5 rounded-[14px] bg-white/70 px-3 py-2 text-sm">
+              <input type="checkbox" checked disabled readOnly className="size-5 flex-none accent-accent" />
+              {label}
+            </label>
+          ))}
+        </div>
+        {/* กฎความปลอดภัย (SKILL §6.8): เรื่องคืนเงิน/ต่ำกว่าพื้น/หลอกระบบต้องถึงเถ้าแก่เสมอ */}
+        <span className="text-xs text-muted">3 ข้อนี้เปิดไว้เสมอ เพื่อให้เรื่องสำคัญถึงเถ้าแก่ทุกครั้ง</span>
+      </fieldset>
+
+      <div className="flex flex-wrap items-center gap-3 pt-1">
+        <button type="button" onClick={onDelete} className={buttonClass("ghost", "h-11 px-3 text-sm text-warn-ink")}>
+          <Trash2 aria-hidden="true" size={16} />
+          ลบสินค้านี้
+        </button>
+        <span className="flex-[1_1_200px] text-[13px] text-muted">บันทึกแล้วมีผลกับแชตลูกค้าทันที</span>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(toDraft(saved));
+            setServerErrors({});
+            setStatus({ kind: "idle" });
+          }}
+          disabled={status.kind === "saving"}
+          className={buttonClass("secondary", "h-12 px-5 font-medium")}
+        >
+          ยกเลิก
+        </button>
+        <button
+          type="button"
+          onClick={() => void onSave()}
+          aria-busy={status.kind === "saving"}
+          disabled={status.kind === "saving"}
+          className={buttonClass("primary", "h-12 px-7 font-semibold")}
+        >
+          บันทึก
+        </button>
+      </div>
+      <StatusLine status={status} className="-mt-3 text-right" />
+    </section>
   );
 }
 
@@ -619,7 +700,7 @@ function TierRow({
 function GiftRow({ gift, on, onToggle }: { gift: GiftInfo; on: boolean; onToggle: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/70 px-3.5 py-3">
-      <Thumb size="size-10 rounded-xl" />
+      <ProductThumb src={gift.imageUrl} className="size-10 rounded-xl" />
       <div className="flex min-w-0 flex-[1_1_200px] flex-col">
         <span className="text-sm font-semibold">ของแถม: {gift.name}</span>
         <span className="text-xs text-muted">

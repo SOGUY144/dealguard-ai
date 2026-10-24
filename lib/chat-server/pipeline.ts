@@ -19,6 +19,7 @@ import {
 import { deriveSuggestions, isOfferCardExpired, lastOffers, OFFER_TTL_MS } from "@/lib/chat/suggestions";
 import type { ChatMessage, ChatMessageDraft, ChatMessageOf, Offer, PublicProduct, Storefront } from "@/lib/chat/types";
 import { runDealEngine } from "@/lib/deal-engine";
+import { productImageUrl } from "@/lib/products/image-url";
 import type { Intent, MerchantConfig, NegotiationState, PricedOffer } from "@/lib/deal-engine/types";
 import type { Speaker, SpokenAudio } from "@/lib/voice/speaker";
 import type { ChatStore, StoredChat } from "./store";
@@ -126,7 +127,10 @@ function usableOffers(messages: ChatMessage[], config: MerchantConfig, now: Date
 
 /** สินค้าที่ลูกค้าเห็นได้ (ไม่มีต้นทุน/ราคาพื้น/tier) — ที่เดียวที่แปลง Product → PublicProduct */
 export function toPublicProducts(config: MerchantConfig): PublicProduct[] {
-  return config.products.map(({ sku, name, listPrice }) => ({ sku, name, listPrice }));
+  return config.products.map(({ sku, name, listPrice, imagePath }) => {
+    const imageUrl = productImageUrl(imagePath);
+    return imageUrl ? { sku, name, listPrice, imageUrl } : { sku, name, listPrice };
+  });
 }
 
 /** สินค้าที่คุยกันล่าสุด: การ์ดสินค้า หรือการ์ดข้อเสนอ อันไหนมาทีหลัง */

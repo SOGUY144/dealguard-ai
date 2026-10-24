@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Offer } from "@/lib/chat/types";
 import { formatBaht, formatClock, formatQty } from "@/lib/format";
 import type { OwnerDeal } from "@/lib/owner/summary";
@@ -28,9 +29,14 @@ export function Deals({ deals }: { deals: OwnerDeal[] }) {
       aria-labelledby="deal-h"
       className="flex scroll-mt-6 flex-col gap-2.5 md:glass md:gap-1.5 md:rounded-[24px] md:px-4 md:pt-[18px] md:pb-2"
     >
-      <h2 id="deal-h" className="px-1 text-[17px] font-semibold md:px-1.5 md:text-lg">
-        ดีลที่ AI ปิดได้
-      </h2>
+      <div className="flex items-center justify-between gap-3 px-1 md:px-1.5">
+        <h2 id="deal-h" className="text-[17px] font-semibold md:text-lg">
+          ดีลที่ AI ปิดได้
+        </h2>
+        <Link href="/owner/deals" className="text-sm font-medium text-accent-ink hover:underline">
+          ดูทั้งหมด
+        </Link>
+      </div>
 
       {deals.length === 0 ? (
         <p className="glass rounded-[22px] px-4 py-6 text-center text-sm text-muted md:bg-transparent md:shadow-none md:[backdrop-filter:none] md:border-0">

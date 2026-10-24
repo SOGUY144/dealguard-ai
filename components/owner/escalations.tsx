@@ -39,6 +39,9 @@ export function Escalations({ escalations, openCount: count, ownerName }: Props)
         <span className="text-[13px] leading-[1.5]">AI หยุดตอบในแชตเหล่านี้ และส่งเรื่องให้{ownerName}ตัดสินเอง</span>
       </div>
 
+      <Link href="/owner/escalations" className="self-end px-1 text-sm font-medium text-accent-ink hover:underline">
+        ดูทั้งหมด<span className="sr-only">เรื่องที่ส่งให้เถ้าแก่</span>
+      </Link>
       {escalations.length === 0 ? (
         <p className="glass rounded-[22px] px-4 py-6 text-center text-sm text-muted">ไม่มีเรื่องที่รอตัดสิน</p>
       ) : (

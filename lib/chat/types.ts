@@ -4,7 +4,8 @@ import type { Offer } from "@/lib/deal-engine/types";
 export type { Offer };
 
 /** สินค้าที่ลูกค้าเห็นได้ — ไม่มี unitCost / floorPrice / tiers */
-export type PublicProduct = { sku: string; name: string; listPrice: number };
+/** imageUrl = รูปสินค้า (ถ้าเถ้าแก่อัปโหลด) */
+export type PublicProduct = { sku: string; name: string; listPrice: number; imageUrl?: string };
 
 /** ข้อมูลร้านที่แสดงฝั่งลูกค้า (ส่งเป็น props จาก server) */
 export type Storefront = {

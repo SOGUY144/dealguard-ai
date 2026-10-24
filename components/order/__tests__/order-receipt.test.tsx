@@ -45,8 +45,8 @@ describe("OrderReceipt (Mobile-Order)", () => {
     for (const link of links) expect(link).toHaveAttribute("href", "/");
   });
 
-  it("ปุ่มคุยกับเถ้าแก่ยังปิดไว้จนกว่าเฟส 8", () => {
+  it("ปุ่มคุยกับเถ้าแก่กดได้ (ส่งเรื่องให้เถ้าแก่แล้วกลับไปแชต)", () => {
     render(<OrderReceipt order={getMockOrder("demo-B")!} storefront={storefront} />);
-    expect(screen.getByRole("button", { name: "คุยกับเฮียชัยโดยตรง" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "คุยกับเฮียชัยโดยตรง" })).toBeEnabled();
   });
 });

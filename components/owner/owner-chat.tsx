@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CircleCheck, LoaderCircle, Mic, Sparkles, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, CircleCheck, LoaderCircle, Mic, Sparkles, Square, User } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { type ConnectLive, useLiveUpdates } from "@/components/live/use-live-updates";
@@ -10,6 +10,8 @@ import { cn } from "@/lib/cn";
 import { formatBaht, formatClock, formatDayLabel, formatQty } from "@/lib/format";
 import { quickReplies, type OwnerChatView } from "@/lib/owner/chat-view";
 import { escalationLabel, ownerInitials } from "@/lib/owner/summary";
+import { browserVoice, type LiveVoice } from "@/components/chat/use-chat-session";
+import type { Recorder } from "@/components/chat/voice-input";
 import { LiveStatusNote } from "./owner-live";
 
 export type OwnerChatAction = { type: "reply"; text: string } | { type: "resolve" } | { type: "handback" };
@@ -25,14 +27,26 @@ type Props = {
   transport: OwnerChatTransport;
   /** Realtime ของแชตนี้ (test ใส่ null) */
   connect: ConnectLive | null;
+  /** มีคีย์แปลงเสียง (OPENAI_TRANSCRIBE_MODEL) — ไม่มี ปุ่มไมค์กดไม่ได้ */
+  voiceInput?: boolean;
+  /** ไม่ใส่ = ไมค์ของ browser + /api/transcribe */
+  voice?: LiveVoice;
 };
 
+/** อัดได้นานสุด แล้วหยุดเอง (เหมือนฝั่งลูกค้า) */
+const MAX_RECORD_MS = 30_000;
+
 /** หน้าแชตเถ้าแก่ (Owner-Chat): ลูกค้าซ้าย · AI/เถ้าแก่ขวา · สรุปจาก AI · ตอบในชื่อเถ้าแก่ · ให้ AI ตอบต่อ */
-export function OwnerChatScreen({ initial, ownerName, transport, connect }: Props) {
+export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceInput = false, voice = browserVoice }: Props) {
   const [view, setView] = useState(initial);
   const [pending, setPending] = useState<OwnerChatAction["type"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  // พูดแทนพิมพ์: ข้อความที่แปลงได้ไปอยู่ในช่องตอบ ให้เถ้าแก่ตรวจก่อนกดส่งเอง
+  const [dictation, setDictation] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const recorder = useRef<Recorder | null>(null);
+  const autoStop = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   // มาจากปุ่ม "ตอบเอง" (#reply) → พร้อมพิมพ์ทันที
@@ -73,6 +87,43 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect }: Prop
   const chips = useMemo(() => quickReplies(esc?.kind ?? null), [esc?.kind]);
   const humanMode = view.mode === "human";
 
+
+  async function stopDictation() {
+    clearTimeout(autoStop.current);
+    const rec = recorder.current;
+    recorder.current = null;
+    if (!rec) return;
+    setDictation("transcribing");
+    try {
+      const heard = (await voice.transcribe(await rec.stop())).trim();
+      if (!heard) {
+        setVoiceNotice("ไม่ได้ยินเสียงพูด ลองพูดอีกครั้ง หรือพิมพ์แทน");
+        return;
+      }
+      setText((current) => (current.trim() ? `${current.trim()} ${heard}` : heard));
+      inputRef.current?.focus();
+    } catch {
+      setVoiceNotice("แปลงเสียงไม่สำเร็จ ลองอีกครั้ง หรือพิมพ์แทน");
+    } finally {
+      setDictation("idle");
+    }
+  }
+
+  async function onMic() {
+    if (dictation === "transcribing") return;
+    if (dictation === "recording") return void stopDictation();
+    setVoiceNotice(null);
+    const rec = voice.recorder();
+    try {
+      await rec.start();
+    } catch {
+      setVoiceNotice("ใช้ไมค์ไม่ได้ อนุญาตไมค์ในเบราว์เซอร์ หรือพิมพ์แทน");
+      return;
+    }
+    recorder.current = rec;
+    setDictation("recording");
+    autoStop.current = setTimeout(() => void stopDictation(), MAX_RECORD_MS);
+  }
   return (
     <div className="mx-auto flex h-dvh w-full max-w-[760px] flex-col">
       <header className="glass-pill mx-3 mt-3 flex shrink-0 items-center gap-2.5 py-2 pr-3 pl-2">
@@ -200,9 +251,22 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect }: Prop
               )}
               ให้ AI ตอบต่อ
             </button>
-            {/* เสียงของเถ้าแก่ไม่อยู่ใน MVP (ใช้เสียง AI) — แสดงตามดีไซน์แต่กดไม่ได้ */}
-            <button type="button" disabled aria-label="พูดด้วยเสียง (ยังไม่เปิดใช้)" className={buttonClass("ghost", "size-11 p-0")}>
-              <Mic aria-hidden="true" size={19} />
+            {/* พูดแทนพิมพ์ — แปลงเป็นข้อความใส่ช่องตอบ (ลูกค้าเห็นเป็นข้อความ ไม่ใช่เสียงเถ้าแก่) */}
+            <button
+              type="button"
+              onClick={() => void onMic()}
+              disabled={!voiceInput || dictation === "transcribing"}
+              aria-pressed={dictation === "recording"}
+              aria-label={dictation === "recording" ? "หยุดอัดเสียง" : voiceInput ? "พูดแทนพิมพ์" : "พูดแทนพิมพ์ (ยังไม่ได้ตั้งค่าแปลงเสียง)"}
+              className={buttonClass("ghost", cn("size-11 p-0", dictation === "recording" && "bg-warn-bg text-warn-ink"))}
+            >
+              {dictation === "transcribing" ? (
+                <LoaderCircle aria-hidden="true" size={18} className="motion-safe:animate-spin" />
+              ) : dictation === "recording" ? (
+                <Square aria-hidden="true" size={16} fill="currentColor" />
+              ) : (
+                <Mic aria-hidden="true" size={19} />
+              )}
             </button>
             <span className="flex-1" />
             <button
@@ -219,6 +283,9 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect }: Prop
             </button>
           </div>
         </form>
+        <p aria-live="polite" className="px-2 text-xs text-muted empty:hidden">
+          {dictation === "recording" ? "กำลังฟัง… กดปุ่มอีกครั้งเมื่อพูดจบ" : voiceNotice}
+        </p>
       </div>
     </div>
   );

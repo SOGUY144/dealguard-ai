@@ -16,12 +16,20 @@ async function call(chatId: string, action?: OwnerChatAction): Promise<OwnerChat
 }
 
 /** ต่อหน้าแชตเถ้าแก่เข้ากับ API + Realtime จริง (ฟังก์ชันส่งผ่าน props จาก server ไม่ได้) */
-export function OwnerChatFromServer({ initial, ownerName }: { initial: OwnerChatView; ownerName: string }) {
+export function OwnerChatFromServer({
+  initial,
+  ownerName,
+  voiceInput,
+}: {
+  initial: OwnerChatView;
+  ownerName: string;
+  voiceInput: boolean;
+}) {
   const { chatId } = initial;
   const transport = useMemo<OwnerChatTransport>(
     () => ({ act: (action) => call(chatId, action), load: () => call(chatId) }),
     [chatId],
   );
   const connect = useMemo(() => connectChat(chatId), [chatId]);
-  return <OwnerChatScreen initial={initial} ownerName={ownerName} transport={transport} connect={connect} />;
+  return <OwnerChatScreen initial={initial} ownerName={ownerName} transport={transport} connect={connect} voiceInput={voiceInput} />;
 }

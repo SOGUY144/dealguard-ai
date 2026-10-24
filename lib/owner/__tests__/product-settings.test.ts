@@ -4,6 +4,7 @@ import { toSaveArgs, validateSettings, type ProductSettingsForm } from "../produ
 // ค่าตามไฟล์ดีไซน์ Owner-Settings / SKILL §6.2
 const base: ProductSettingsForm = {
   sku: "CBL-C-1M",
+  name: "สายชาร์จ Type-C 1 เมตร",
   listPrice: 150,
   unitCost: 100,
   floorPrice: 120,
@@ -80,6 +81,10 @@ describe("validateSettings — กฎราคา (SKILL: AI เสนอต่�
     expect(errorsOf({ tiers: [] })).toEqual({});
   });
 
+  it("ชื่อว่าง → ไม่ผ่าน", () => {
+    expect(errorsOf({ name: " " })).toEqual({ name: "ใส่ชื่อสินค้า (ไม่เกิน 80 ตัวอักษร)" });
+  });
+
   it("ช่องว่าง (NaN) → บอกให้ใส่ตัวเลข", () => {
     expect(errorsOf({ listPrice: Number.NaN })).toMatchObject({ listPrice: "ใส่ราคาขายมากกว่า 0" });
   });
@@ -114,6 +119,7 @@ describe("toSaveArgs", () => {
     });
     expect(args).toMatchObject({
       p_sku: "CBL-C-1M",
+      p_name: "สายชาร์จ Type-C 1 เมตร",
       p_list_price: 150,
       p_unit_cost: 100,
       p_floor_price: 120,

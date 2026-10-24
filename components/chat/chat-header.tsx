@@ -1,14 +1,14 @@
-import { LogOut, User } from "lucide-react";
-import { LogoutForm } from "@/components/auth/logout-button";
+import { User } from "lucide-react";
 import { AiAvatar } from "@/components/ui/ai-avatar";
-import { buttonClass, IconButton } from "@/components/ui/button";
+import { buttonClass } from "@/components/ui/button";
+import { MobileMenu } from "./mobile-menu";
 
 type Props = {
   assistantName: string;
   onTalkToHuman: () => void;
   /** รอคำตอบอยู่ — กดซ้อนไม่ได้ */
   busy?: boolean;
-  /** แสดงปุ่มออกจากระบบ — เฉพาะมือถือ (คอมอยู่ที่แถบร้าน) */
+  /** มีปุ่มออกจากระบบในเมนูมือถือ (คอมอยู่ที่แถบร้าน) */
   canLogout?: boolean;
 };
 
@@ -36,13 +36,7 @@ export function ChatHeader({ assistantName, onTalkToHuman, busy = false, canLogo
         <User aria-hidden="true" size={18} className="text-accent" />
         <span className="sr-only md:not-sr-only">คุยกับคนจริง</span>
       </button>
-      {canLogout && (
-        <LogoutForm className="md:hidden">
-          <IconButton type="submit" label="ออกจากระบบ" variant="ghost">
-            <LogOut aria-hidden="true" size={18} />
-          </IconButton>
-        </LogoutForm>
-      )}
+      <MobileMenu canLogout={canLogout} />
     </header>
   );
 }

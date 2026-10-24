@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { OwnerChatView } from "@/lib/owner/chat-view";
 import { OwnerChatScreen, type OwnerChatTransport } from "../owner-chat";
@@ -83,5 +83,51 @@ describe("OwnerChatScreen (Owner-Chat)", () => {
     setup({ ...refundView, messages: [...refundView.messages, { id: "o1", at, type: "owner_text", text: "ส่งรูปมาครับ" }] });
     expect(screen.getByText(/เฮียชัย \(คุณ\)/)).toBeInTheDocument();
     expect(screen.getByText("ส่งรูปมาครับ")).toBeInTheDocument();
+  });
+});
+
+describe("ไมค์ของเถ้าแก่ — พูดแทนพิมพ์", () => {
+  function setupVoice(transcript: string | Error) {
+    const start = vi.fn(async () => {});
+    const stop = vi.fn(async () => new Blob(["x"], { type: "audio/webm" }));
+    const transcribe = vi.fn(async () => {
+      if (transcript instanceof Error) throw transcript;
+      return transcript;
+    });
+    const transport: OwnerChatTransport = { act: vi.fn(async () => refundView), load: vi.fn(async () => refundView) };
+    render(
+      <OwnerChatScreen
+        initial={refundView}
+        ownerName="เฮียชัย"
+        transport={transport}
+        connect={null}
+        voiceInput
+        voice={{ recorder: () => ({ start, stop }), transcribe }}
+      />,
+    );
+    return { start, stop, transcribe, act: transport.act };
+  }
+
+  it("กดอัด → กดอีกครั้ง → ข้อความที่พูดไปอยู่ในช่องตอบ (ยังไม่ส่ง ให้ตรวจก่อน)", async () => {
+    const { start, transcribe, act } = setupVoice("เดี๋ยวเฮียโทรกลับครับ");
+    const mic = screen.getByRole("button", { name: "พูดแทนพิมพ์" });
+    fireEvent.click(mic);
+    await waitFor(() => expect(start).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole("button", { name: "หยุดอัดเสียง" }));
+    await waitFor(() => expect(transcribe).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByLabelText(/พิมพ์ตอบ/)).toHaveValue("เดี๋ยวเฮียโทรกลับครับ"));
+    expect(act).not.toHaveBeenCalled();
+  });
+
+  it("แปลงเสียงไม่ได้ → บอกให้ลองใหม่หรือพิมพ์แทน", async () => {
+    setupVoice(new Error("503"));
+    fireEvent.click(screen.getByRole("button", { name: "พูดแทนพิมพ์" }));
+    fireEvent.click(await screen.findByRole("button", { name: "หยุดอัดเสียง" }));
+    expect(await screen.findByText(/แปลงเสียงไม่สำเร็จ/)).toBeInTheDocument();
+  });
+
+  it("ไม่มีคีย์แปลงเสียง → ปุ่มไมค์กดไม่ได้", () => {
+    render(<OwnerChatScreen initial={refundView} ownerName="เฮียชัย" transport={{ act: vi.fn(), load: vi.fn() }} connect={null} />);
+    expect(screen.getByRole("button", { name: /พูดแทนพิมพ์/ })).toBeDisabled();
   });
 });

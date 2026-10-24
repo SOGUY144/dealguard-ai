@@ -1,7 +1,17 @@
 // กฎว่าหน้าไหนต้องล็อกอิน — ใช้ใน proxy.ts (เช็กเบื้องต้นเท่านั้น role ตรวจซ้ำใน lib/auth/dal.ts)
 
 /** เข้าได้โดยไม่ต้องล็อกอิน */
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/auth/callback", "/auth/session-reset", "/privacy"];
+// วิธีสั่งซื้อ / ติดต่อร้าน อ่านได้ก่อนสมัคร
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/auth/callback",
+  "/auth/session-reset",
+  "/privacy",
+  "/how-to-order",
+  "/contact",
+];
 /** ล็อกอินแล้วไม่ต้องเห็นอีก */
 const GUEST_ONLY = ["/login", "/signup", "/forgot-password"];
 

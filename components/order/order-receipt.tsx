@@ -1,5 +1,6 @@
 import { ArrowLeft, Check, Shield } from "lucide-react";
 import Link from "next/link";
+import { TalkToOwnerButton } from "@/components/chat/talk-to-owner-button";
 import { buttonClass } from "@/components/ui/button";
 import type { OrderView } from "@/lib/chat/mock-orders";
 import type { Storefront } from "@/lib/chat/types";
@@ -62,10 +63,7 @@ export function OrderReceipt({ order, storefront }: Props) {
         <Link href="/" className={buttonClass("primary", "h-[52px] text-base")}>
           กลับไปแชต
         </Link>
-        {/* เปิดใช้ในเฟส 8 (Owner-Chat) — ตอนนี้ยังส่งเรื่องให้เถ้าแก่จากหน้านี้ไม่ได้ */}
-        <button type="button" disabled className={buttonClass("white", "h-12 font-medium text-accent-ink shadow-none")}>
-          คุยกับ{storefront.ownerName}โดยตรง
-        </button>
+        <TalkToOwnerButton ownerName={storefront.ownerName} from={`/order/${order.id}`} />
       </div>
     </div>
   );

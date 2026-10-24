@@ -106,7 +106,8 @@ describe("OwnerSidebar / OwnerBottomNav", () => {
   it("หน้าปัจจุบันมี aria-current · badge รอตัดสินบอกจำนวนให้ screen reader", () => {
     render(<OwnerSidebar openCount={2} />);
     expect(screen.getByRole("link", { name: "ภาพรวม" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: /รอตัดสิน\s*มี\s*2\s*เรื่อง/ })).toHaveAttribute("href", "/owner#escalations");
+    expect(screen.getByRole("link", { name: /รอตัดสิน\s*มี\s*2\s*เรื่อง/ })).toHaveAttribute("href", "/owner/escalations");
+    expect(screen.getByRole("link", { name: "ดีลทั้งหมด" })).toHaveAttribute("href", "/owner/deals");
     const products = screen.getByRole("link", { name: "สินค้าและราคา" });
     expect(products).toHaveAttribute("href", "/owner/products");
     expect(products).not.toHaveAttribute("aria-current");

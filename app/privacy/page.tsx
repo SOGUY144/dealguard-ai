@@ -4,7 +4,7 @@ import { storefront } from "@/lib/config/storefront";
 
 export const metadata: Metadata = { title: `นโยบายความเป็นส่วนตัว — ${storefront.storeName}` };
 
-// โครงตาม SKILL §10 (PDPA) — ข้อความใน [วงเล็บเหลี่ยม] ต้องให้ทีมใส่ข้อความจริงก่อนใช้งานจริง ห้ามแต่งเอง
+// โครงตาม SKILL §10 (PDPA) — ข้อความเขียนจากสิ่งที่ระบบทำจริง (ทีมให้เติมเอง 24 ต.ค. 2569) ร้านจริงควรให้ผู้รู้กฎหมายตรวจก่อนใช้
 const SECTIONS = [
   {
     title: "ข้อมูลที่เราเก็บ",
@@ -22,9 +22,28 @@ const SECTIONS = [
       "ไม่นำข้อมูลของคุณไปเทรนโมเดล AI",
     ],
   },
-  { title: "ระยะเวลาที่เก็บ", items: ["[ระยะเวลาเก็บข้อมูล]"] },
-  { title: "สิทธิ์ของคุณ", items: ["[สิทธิ์ของเจ้าของข้อมูลตาม PDPA และวิธีขอใช้สิทธิ์]"] },
-  { title: "ติดต่อ", items: [`${storefront.storeName} · ${storefront.contactChannel}`, "[ผู้ควบคุมข้อมูล / เจ้าหน้าที่คุ้มครองข้อมูล]"] },
+  {
+    title: "ผู้ให้บริการที่ร้านใช้",
+    items: [
+      "Supabase เก็บบัญชี แชต และออเดอร์ · Vercel ให้บริการเว็บไซต์",
+      "OpenAI อ่านข้อความและแปลงเสียงพูดเป็นข้อความ · ElevenLabs สร้างเสียงตอบเมื่อคุณกดไมค์พูด",
+    ],
+  },
+  {
+    title: "ระยะเวลาที่เก็บ",
+    items: ["เก็บไว้ตลอดที่บัญชียังใช้งาน เพื่อให้ร้านดูประวัติแชตและออเดอร์ย้อนหลังได้", "ขอให้ลบบัญชีและข้อมูลได้ทุกเมื่อผ่านช่องทางติดต่อของร้าน"],
+  },
+  {
+    title: "สิทธิ์ของคุณ",
+    items: [
+      "ขอดู ขอสำเนา ขอแก้ไข หรือขอลบข้อมูลของคุณ และขอให้หยุดใช้ข้อมูลได้ ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562",
+      `แจ้งร้านทาง ${storefront.contactChannel} หรือกด "คุยกับคนจริง" ในแชต`,
+    ],
+  },
+  {
+    title: "ติดต่อ",
+    items: [`ผู้ควบคุมข้อมูล: ${storefront.storeName} (เจ้าของร้าน ${storefront.ownerName})`, `ช่องทางติดต่อ: ${storefront.contactChannel}`],
+  },
 ];
 
 export default function PrivacyPage() {
@@ -33,7 +52,7 @@ export default function PrivacyPage() {
       <div className="flex flex-col gap-1">
         <span className="text-[13px] text-muted">{storefront.storeName}</span>
         <h1 className="text-2xl font-semibold md:text-[28px]">นโยบายความเป็นส่วนตัว</h1>
-        <p className="text-sm text-muted">ฉบับร่าง — [วันที่มีผล]</p>
+        <p className="text-sm text-muted">มีผลตั้งแต่ 24 ต.ค. 2569</p>
       </div>
       <div className="glass flex flex-col gap-5 rounded-card p-5 md:p-7">
         {SECTIONS.map((s) => (
@@ -47,9 +66,14 @@ export default function PrivacyPage() {
           </section>
         ))}
       </div>
-      <Link href="/signup" className="self-center text-sm font-semibold text-accent-ink">
-        กลับไปหน้าสมัครสมาชิก
-      </Link>
+      <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+        <Link href="/" className="text-sm font-semibold text-accent-ink">
+          กลับไปแชต
+        </Link>
+        <Link href="/signup" className="text-sm font-semibold text-accent-ink">
+          กลับไปหน้าสมัครสมาชิก
+        </Link>
+      </div>
     </main>
   );
 }

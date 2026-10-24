@@ -129,6 +129,7 @@ export class SupabaseChatStore implements ChatStore {
         })),
         cashDiscountPct: num(p.cash_discount_pct),
         defaultCreditDays: num(p.default_credit_days),
+        imagePath: (p.image_path as string | null) ?? null,
       })),
       deadStock: (shop.dead_stock as Row[]).map((d) => ({
         sku: String(d.sku),

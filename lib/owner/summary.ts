@@ -2,11 +2,13 @@
 // "กำไรที่รักษาไว้" = เทียบกับถ้ายอมลดตามที่ลูกค้าขอ (SKILL §6.5) ไม่ใช่กำไรทั้งหมดที่เกิดจาก AI
 import type { HandoffKind } from "@/lib/chat/replies";
 import type { ChatMessage, Offer } from "@/lib/chat/types";
-import { formatBaht } from "@/lib/format";
+import { bangkokDayStart as bangkokDayStartOf, formatBaht, thaiDate as thaiDateOf } from "@/lib/format";
 
 /** ดีลที่ปิดได้ 1 ดีล — มีตัวเลขหลังบ้าน แสดงได้เฉพาะหน้าเถ้าแก่ */
 export type OwnerDeal = {
   id: string;
+  /** แชตของดีลนี้ (ลิงก์ไปดูแชต) */
+  chatId?: string;
   at: string;
   buyerName: string;
   productName: string;
@@ -24,6 +26,9 @@ export type OwnerEscalation = {
   brief: string[];
   at: string;
 };
+
+/** เรื่องในหน้ารอตัดสิน (ทุกวัน) */
+export type EscalationEntry = OwnerEscalation & { status: "open" | "resolved"; buyerName: string };
 
 export type OwnerTotals = { recoveredTotal: number; revenueTotal: number; dealCount: number };
 
@@ -109,3 +114,31 @@ export function chatPreview(messages: ChatMessage[]): string {
   }
 }
 
+
+// ───────────────────────── หน้าดีลทั้งหมด ─────────────────────────
+
+export const DEAL_RANGES = { today: "วันนี้", "7d": "7 วัน", "30d": "30 วัน", all: "ทั้งหมด" } as const;
+export type DealRange = keyof typeof DEAL_RANGES;
+
+export function parseDealRange(value: unknown): DealRange {
+  return typeof value === "string" && value in DEAL_RANGES ? (value as DealRange) : "all";
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** วันแรกของช่วง (นับรวมวันนี้ เวลาไทย) · ทั้งหมด = null */
+export function dealRangeStart(range: DealRange, now: Date): Date | null {
+  const days = { today: 1, "7d": 7, "30d": 30, all: 0 }[range];
+  if (!days) return null;
+  return new Date(bangkokDayStartOf(now).getTime() - (days - 1) * DAY_MS);
+}
+
+/** ดีลแยกตามวัน (เวลาไทย) วันใหม่ก่อน ในวันเดียวกันล่าสุดก่อน */
+export function groupDealsByDay(deals: OwnerDeal[]): { label: string; deals: OwnerDeal[] }[] {
+  const groups = new Map<number, OwnerDeal[]>();
+  for (const d of [...deals].sort((a, b) => b.at.localeCompare(a.at))) {
+    const key = bangkokDayStartOf(new Date(d.at)).getTime();
+    groups.set(key, [...(groups.get(key) ?? []), d]);
+  }
+  return [...groups].map(([key, list]) => ({ label: thaiDateOf(new Date(key)), deals: list }));
+}

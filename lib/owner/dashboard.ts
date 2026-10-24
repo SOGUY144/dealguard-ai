@@ -9,6 +9,7 @@ import {
   bangkokDayStart,
   chatPreview,
   type ActiveChat,
+  type EscalationEntry,
   type OwnerDeal,
   type OwnerEscalation,
 } from "./summary";
@@ -20,6 +21,9 @@ const one = (v: unknown): Row | null => (Array.isArray(v) ? ((v[0] as Row) ?? nu
 
 /** รายการเรื่องรอตัดสินที่แสดงได้มากสุด (จำนวนจริงนับแยก) */
 const ESCALATION_LIST_LIMIT = 20;
+/** หน้าดีลทั้งหมด / รอตัดสิน แสดงได้มากสุด (ร้านเดียวในเดโม พอเหลือ) */
+const DEAL_HISTORY_LIMIT = 1000;
+const ESCALATION_HISTORY_LIMIT = 200;
 /** แชตที่กำลังคุยที่แสดงในหน้าภาพรวม */
 const ACTIVE_CHAT_LIMIT = 8;
 /** ข้อความล่าสุดต่อแชตที่ใช้ดูสถานะ/ตัวอย่างข้อความ */
@@ -41,41 +45,11 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
   // เรื่องที่ยังไม่ปิดของวันนี้ — ของวันก่อนไม่ค้างกองบนหน้า (ปิดเรื่องได้ในหน้าแชตเถ้าแก่ เฟส 8)
   const openToday = () =>
     db.from("escalations").select("id, chat_id, kind, brief, created_at", { count: "exact" }).eq("status", "open").gte("created_at", since);
-  const [orders, escalations] = await Promise.all([
-    db
-      .from("orders")
-      // เฉพาะออเดอร์ของบัญชีลูกค้า — เถ้าแก่/กรรมการลองสั่งเองจากหน้าลูกค้าไม่นับเป็นดีลของ AI
-      .select("id, created_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))")
-      .eq("profiles.role", "buyer")
-      .gte("created_at", since)
-      .order("created_at"),
+  const [{ deals, incompleteDeals }, escalations] = await Promise.all([
+    readDeals(db, since),
     openToday().order("created_at", { ascending: false }).limit(ESCALATION_LIST_LIMIT),
   ]);
-  if (orders.error) throw new Error(`[owner] อ่านออเดอร์: ${orders.error.message}`);
   if (escalations.error) throw new Error(`[owner] อ่านเรื่องที่ส่งต่อ: ${escalations.error.message}`);
-
-  const deals: OwnerDeal[] = [];
-  let incompleteDeals = 0;
-  for (const row of orders.data as Row[]) {
-    const offerRow = one(row.offers);
-    const econ = offerRow && one(offerRow.offer_economics);
-    if (!offerRow || !econ) {
-      // ไม่ควรเกิด (ข้อเสนอ + margin เขียนพร้อมกันแล้ว) — นับไว้ให้หน้าเตือน และลง log ให้ตามได้
-      incompleteDeals += 1;
-      console.warn(`[owner] ออเดอร์ ${String(row.id)} ไม่มี margin — ไม่ถูกนับในยอด`);
-      continue;
-    }
-    deals.push({
-      id: String(row.id),
-      at: new Date(String(row.created_at)).toISOString(),
-      buyerName: String(one(row.profiles)?.display_name ?? "ลูกค้า"),
-      productName: String(row.product_name),
-      offer: toOffer(offerRow),
-      marginIfConceded: Number(econ.margin_if_conceded),
-      marginOffer: Number(econ.margin_offer),
-      recoveredMargin: Number(econ.recovered_margin),
-    });
-  }
 
   return {
     deals,
@@ -90,6 +64,66 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
       at: new Date(String(e.created_at)).toISOString(),
     })),
   };
+}
+
+/** ดีลที่ปิดได้ตั้งแต่ since (null = ทั้งหมด) เก่าก่อน — หน้าภาพรวม (วันนี้) และหน้าดีลทั้งหมด */
+export async function readDeals(
+  db: SupabaseClient,
+  since: string | null,
+): Promise<{ deals: OwnerDeal[]; incompleteDeals: number }> {
+  let query = db
+    .from("orders")
+    // เฉพาะออเดอร์ของบัญชีลูกค้า — เถ้าแก่/กรรมการลองสั่งเองจากหน้าลูกค้าไม่นับเป็นดีลของ AI
+    .select("id, chat_id, created_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))")
+    .eq("profiles.role", "buyer");
+  if (since) query = query.gte("created_at", since);
+  const orders = await query.order("created_at").limit(DEAL_HISTORY_LIMIT);
+  if (orders.error) throw new Error(`[owner] อ่านออเดอร์: ${orders.error.message}`);
+
+  const deals: OwnerDeal[] = [];
+  let incompleteDeals = 0;
+  for (const row of orders.data as Row[]) {
+    const offerRow = one(row.offers);
+    const econ = offerRow && one(offerRow.offer_economics);
+    if (!offerRow || !econ) {
+      // ไม่ควรเกิด (ข้อเสนอ + margin เขียนพร้อมกันแล้ว) — นับไว้ให้หน้าเตือน และลง log ให้ตามได้
+      incompleteDeals += 1;
+      console.warn(`[owner] ออเดอร์ ${String(row.id)} ไม่มี margin — ไม่ถูกนับในยอด`);
+      continue;
+    }
+    deals.push({
+      id: String(row.id),
+      chatId: String(row.chat_id),
+      at: new Date(String(row.created_at)).toISOString(),
+      buyerName: String(one(row.profiles)?.display_name ?? "ลูกค้า"),
+      productName: String(row.product_name),
+      offer: toOffer(offerRow),
+      marginIfConceded: Number(econ.margin_if_conceded),
+      marginOffer: Number(econ.margin_offer),
+      recoveredMargin: Number(econ.recovered_margin),
+    });
+  }
+  return { deals, incompleteDeals };
+}
+
+/** เรื่องที่ส่งให้เถ้าแก่ทุกวัน (ไม่ใช่แค่วันนี้) ล่าสุดก่อน — หน้ารอตัดสิน */
+export async function readEscalationHistory(db: SupabaseClient, status: "open" | "resolved"): Promise<EscalationEntry[]> {
+  const res = await db
+    .from("escalations")
+    .select("id, chat_id, kind, brief, status, created_at, chats(profiles(display_name))")
+    .eq("status", status)
+    .order("created_at", { ascending: false })
+    .limit(ESCALATION_HISTORY_LIMIT);
+  if (res.error) throw new Error(`[owner] อ่านเรื่องที่ส่งต่อ: ${res.error.message}`);
+  return (res.data as Row[]).map((e) => ({
+    id: String(e.id),
+    chatId: String(e.chat_id),
+    kind: e.kind as HandoffKind,
+    brief: (e.brief as string[]) ?? [],
+    at: new Date(String(e.created_at)).toISOString(),
+    status: e.status === "resolved" ? "resolved" : "open",
+    buyerName: String(one(one(e.chats)?.profiles)?.display_name ?? "ลูกค้า"),
+  }));
 }
 
 /** จำนวนเรื่องรอตัดสินของวันนี้ — badge ในเมนูของหน้าอื่นที่ไม่ใช่ภาพรวม */

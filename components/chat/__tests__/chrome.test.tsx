@@ -25,6 +25,7 @@ describe("ChatHeader", () => {
 describe("ChatHeader — ออกจากระบบ", () => {
   it("ปุ่มออกจากระบบเป็นฟอร์ม POST ไป /auth/logout (โหลดหน้าใหม่ทั้งหน้า)", () => {
     render(<ChatHeader assistantName="ผู้ช่วย AI ของเฮียชัย" onTalkToHuman={() => {}} canLogout />);
+    fireEvent.click(screen.getByRole("button", { name: "เมนู" }));
     const button = screen.getByRole("button", { name: "ออกจากระบบ" });
     expect(button).toHaveAttribute("type", "submit");
     expect(button.closest("form")).toHaveAttribute("action", "/auth/logout");
@@ -33,6 +34,7 @@ describe("ChatHeader — ออกจากระบบ", () => {
 
   it("ไม่ได้ล็อกอิน → ไม่มีปุ่ม", () => {
     render(<ChatHeader assistantName="ผู้ช่วย AI ของเฮียชัย" onTalkToHuman={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "เมนู" }));
     expect(screen.queryByRole("button", { name: "ออกจากระบบ" })).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@
 // อ่านด้วย client ของเถ้าแก่ (RLS: เฉพาะ owner อ่านต้นทุน/ราคาพื้นได้) · บันทึกผ่าน RPC ของ service role หลังเช็กสิทธิ์แล้ว
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { productImageUrl } from "@/lib/products/image-url";
 import {
   toSaveArgs,
   validateSettings,
@@ -15,6 +16,10 @@ export type { GiftInfo, ProductSettingsPage, SaveResult } from "./product-settin
 
 type Row = Record<string, unknown>;
 const num = (v: unknown) => Number(v);
+const withImage = (path: unknown) => {
+  const imageUrl = productImageUrl(typeof path === "string" ? path : null);
+  return imageUrl ? { imageUrl } : {};
+};
 
 export async function readProductSettings(db: SupabaseClient): Promise<ProductSettingsPage> {
   const res = await db
@@ -37,6 +42,7 @@ export async function readProductSettings(db: SupabaseClient): Promise<ProductSe
     perceivedValue: num(d.perceived_value),
     qtyAvailable: num(d.qty_available),
     enabled: d.gift_enabled !== false,
+    ...withImage(d.image_path),
   }));
   const products = (shop.products as Row[]).map((p) => ({
     sku: String(p.sku),
@@ -52,6 +58,7 @@ export async function readProductSettings(db: SupabaseClient): Promise<ProductSe
     costOfCapitalPct: Math.round(num(shop.cost_of_capital_annual) * 10_000) / 100,
     escalationDealValue: num(shop.escalation_deal_value),
     gifts: gifts.map(({ sku, enabled }) => ({ sku, enabled })),
+    ...withImage(p.image_path),
   }));
   return { products, gifts };
 }

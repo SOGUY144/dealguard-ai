@@ -5,7 +5,7 @@ import { LogoutForm } from "@/components/auth/logout-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
-type Page = "overview" | "products";
+type Page = "overview" | "deals" | "escalations" | "products";
 type Props = { openCount: number; current?: Page };
 
 type Item = {
@@ -18,11 +18,17 @@ type Item = {
 };
 
 function items(openCount: number, current: Page): Item[] {
-  // ลิงก์ไปส่วนของหน้าภาพรวมใส่ /owner นำหน้า — กดจากหน้าสินค้าได้ด้วย
   return [
     { label: "ภาพรวม", short: "ภาพรวม", href: "/owner", icon: <LayoutGrid size={18} />, current: current === "overview" },
-    { label: "ดีลทั้งหมด", short: "ดีล", href: "/owner#deals", icon: <List size={18} /> },
-    { label: "รอตัดสิน", short: "รอตัดสิน", href: "/owner#escalations", icon: <Clock size={18} />, badge: openCount },
+    { label: "ดีลทั้งหมด", short: "ดีล", href: "/owner/deals", icon: <List size={18} />, current: current === "deals" },
+    {
+      label: "รอตัดสิน",
+      short: "รอตัดสิน",
+      href: "/owner/escalations",
+      icon: <Clock size={18} />,
+      badge: openCount,
+      current: current === "escalations",
+    },
     { label: "สินค้าและราคา", short: "สินค้า", href: "/owner/products", icon: <Tag size={18} />, current: current === "products" },
   ];
 }

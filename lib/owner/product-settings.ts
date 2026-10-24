@@ -6,6 +6,7 @@ import { formatBaht } from "@/lib/format";
 /** รูปร่างข้อมูลที่ browser ส่งมา (เชื่อไม่ได้) — ค่าที่ผิดกฎปล่อยผ่าน ให้ validateSettings บอกเป็นรายช่อง */
 export const productSettingsSchema = z.object({
   sku: z.string().min(1).max(64),
+  name: z.string().max(200),
   listPrice: z.number(),
   unitCost: z.number(),
   floorPrice: z.number(),
@@ -20,6 +21,7 @@ export const productSettingsSchema = z.object({
 
 export type ProductSettingsForm = {
   sku: string;
+  name: string;
   listPrice: number;
   unitCost: number;
   floorPrice: number;
@@ -36,8 +38,16 @@ export type ProductSettingsForm = {
 };
 
 /** ของค้างสต๊อกที่ใช้เป็นของแถมได้ (ข้อ C) */
-export type GiftInfo = { sku: string; name: string; unitCost: number; perceivedValue: number; qtyAvailable: number; enabled: boolean };
-export type ProductSettingsPage = { products: (ProductSettingsForm & { name: string })[]; gifts: GiftInfo[] };
+export type GiftInfo = {
+  sku: string;
+  name: string;
+  unitCost: number;
+  perceivedValue: number;
+  qtyAvailable: number;
+  enabled: boolean;
+  imageUrl?: string;
+};
+export type ProductSettingsPage = { products: (ProductSettingsForm & { imageUrl?: string })[]; gifts: GiftInfo[] };
 
 /** key = ชื่อช่อง เช่น "floorPrice" หรือ "tiers.2.price" · ว่าง = ผ่าน */
 export type FieldErrors = Record<string, string>;
@@ -52,6 +62,8 @@ const isInt = (n: number) => Number.isInteger(n);
 export function validateSettings(f: ProductSettingsForm): FieldErrors {
   const errors: FieldErrors = {};
 
+  const name = f.name.trim();
+  if (!name || name.length > 80) errors.name = "ใส่ชื่อสินค้า (ไม่เกิน 80 ตัวอักษร)";
   if (!isNum(f.listPrice) || f.listPrice <= 0) errors.listPrice = "ใส่ราคาขายมากกว่า 0";
   if (!isNum(f.unitCost) || f.unitCost < 0) errors.unitCost = "ใส่ต้นทุนตั้งแต่ 0";
   if (!isNum(f.floorPrice)) errors.floorPrice = "ใส่ราคาพื้น";
@@ -96,6 +108,7 @@ export function validateSettings(f: ProductSettingsForm): FieldErrors {
 export function toSaveArgs(f: ProductSettingsForm) {
   return {
     p_sku: f.sku,
+    p_name: f.name.trim(),
     p_list_price: f.listPrice,
     p_unit_cost: f.unitCost,
     p_floor_price: f.floorPrice,
