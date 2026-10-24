@@ -92,6 +92,17 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
   };
 }
 
+/** จำนวนเรื่องรอตัดสินของวันนี้ — badge ในเมนูของหน้าอื่นที่ไม่ใช่ภาพรวม */
+export async function countOpenEscalations(db: SupabaseClient, now = new Date()): Promise<number> {
+  const { count, error } = await db
+    .from("escalations")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "open")
+    .gte("created_at", bangkokDayStart(now).toISOString());
+  if (error) throw new Error(`[owner] นับเรื่องที่ส่งต่อ: ${error.message}`);
+  return count ?? 0;
+}
+
 /** แชตของลูกค้า (ไม่รวมบัญชีเถ้าแก่) ที่มีความเคลื่อนไหวตั้งแต่ since — สถานะ + ข้อความล่าสุด */
 async function readActiveChats(db: SupabaseClient, since: string): Promise<ActiveChat[]> {
   const chats = await db

@@ -102,6 +102,8 @@ export class SupabaseChatStore implements ChatStore {
         .select("*, products(*), dead_stock(*)")
         // เถ้าแก่ปิด "ให้ AI ต่อราคาสินค้านี้" → ไม่แสดง ไม่เสนอราคา ไม่ยืนยันข้อเสนอเก่า
         .eq("products.ai_enabled", true)
+        // เถ้าแก่ปิด "ใช้เป็นของแถม" → ข้อ C ไม่เสนอของชิ้นนี้
+        .eq("dead_stock.gift_enabled", true)
         .order("created_at")
         .order("created_at", { referencedTable: "products" })
         .order("created_at", { referencedTable: "dead_stock" })

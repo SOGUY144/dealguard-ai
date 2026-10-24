@@ -5,7 +5,8 @@ import { LogoutForm } from "@/components/auth/logout-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
-type Props = { openCount: number };
+type Page = "overview" | "products";
+type Props = { openCount: number; current?: Page };
 
 type Item = {
   label: string;
@@ -16,13 +17,13 @@ type Item = {
   badge?: number;
 };
 
-function items(openCount: number): Item[] {
+function items(openCount: number, current: Page): Item[] {
+  // ลิงก์ไปส่วนของหน้าภาพรวมใส่ /owner นำหน้า — กดจากหน้าสินค้าได้ด้วย
   return [
-    { label: "ภาพรวม", short: "ภาพรวม", href: "/owner", icon: <LayoutGrid size={18} />, current: true },
-    { label: "ดีลทั้งหมด", short: "ดีล", href: "#deals", icon: <List size={18} /> },
-    { label: "รอตัดสิน", short: "รอตัดสิน", href: "#escalations", icon: <Clock size={18} />, badge: openCount },
-    // หน้า /owner/products ทำในเฟส 9 — ยังกดไม่ได้ กันลิงก์ไปหน้าที่ไม่มี
-    { label: "สินค้าและราคา", short: "สินค้า", icon: <Tag size={18} /> },
+    { label: "ภาพรวม", short: "ภาพรวม", href: "/owner", icon: <LayoutGrid size={18} />, current: current === "overview" },
+    { label: "ดีลทั้งหมด", short: "ดีล", href: "/owner#deals", icon: <List size={18} /> },
+    { label: "รอตัดสิน", short: "รอตัดสิน", href: "/owner#escalations", icon: <Clock size={18} />, badge: openCount },
+    { label: "สินค้าและราคา", short: "สินค้า", href: "/owner/products", icon: <Tag size={18} />, current: current === "products" },
   ];
 }
 
@@ -43,7 +44,7 @@ function Badge({ count, className }: { count: number; className?: string }) {
 }
 
 /** คอม: แถบเมนูซ้าย (Owner-Desktop) — ไม่มีโลโก้ มีแค่คำว่า DealGuard */
-export function OwnerSidebar({ openCount }: Props) {
+export function OwnerSidebar({ openCount, current = "overview" }: Props) {
   return (
     <aside
       aria-label="เมนูเถ้าแก่"
@@ -51,7 +52,7 @@ export function OwnerSidebar({ openCount }: Props) {
     >
       <span className="px-2 text-[22px] font-bold">DealGuard</span>
       <nav className="flex flex-col gap-1">
-        {items(openCount).map((item) => {
+        {items(openCount, current).map((item) => {
           const content = (
             <>
               <span aria-hidden="true" className={item.current ? "text-accent-ink" : "text-muted"}>
@@ -103,13 +104,13 @@ export function OwnerSidebar({ openCount }: Props) {
 }
 
 /** มือถือ: แถบเมนูล่างแบบแคปซูลลอย (Owner-Mobile) */
-export function OwnerBottomNav({ openCount }: Props) {
+export function OwnerBottomNav({ openCount, current = "overview" }: Props) {
   return (
     <nav
       aria-label="เมนูเถ้าแก่"
       className="glass-pill fixed inset-x-3 bottom-3 z-20 grid grid-cols-4 p-1.5 pb-[max(6px,env(safe-area-inset-bottom))] md:hidden"
     >
-      {items(openCount).map((item) => {
+      {items(openCount, current).map((item) => {
         const content = (
           <>
             <span aria-hidden="true" className="relative">

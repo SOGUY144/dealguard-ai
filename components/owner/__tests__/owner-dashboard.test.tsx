@@ -106,15 +106,23 @@ describe("OwnerSidebar / OwnerBottomNav", () => {
   it("หน้าปัจจุบันมี aria-current · badge รอตัดสินบอกจำนวนให้ screen reader", () => {
     render(<OwnerSidebar openCount={2} />);
     expect(screen.getByRole("link", { name: "ภาพรวม" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: /รอตัดสิน\s*มี\s*2\s*เรื่อง/ })).toHaveAttribute("href", "#escalations");
-    expect(screen.queryByRole("link", { name: "สินค้าและราคา" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /รอตัดสิน\s*มี\s*2\s*เรื่อง/ })).toHaveAttribute("href", "/owner#escalations");
+    const products = screen.getByRole("link", { name: "สินค้าและราคา" });
+    expect(products).toHaveAttribute("href", "/owner/products");
+    expect(products).not.toHaveAttribute("aria-current");
   });
 
-  it("มือถือ: 4 เมนู", () => {
-    render(<OwnerBottomNav openCount={0} />);
+  it("หน้าสินค้าและราคา: เมนูสินค้าเป็นหน้าปัจจุบัน", () => {
+    render(<OwnerSidebar openCount={0} current="products" />);
+    expect(screen.getByRole("link", { name: "สินค้าและราคา" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "ภาพรวม" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("มือถือ: 4 เมนู กดได้ทุกเมนู", () => {
+    render(<OwnerBottomNav openCount={0} current="products" />);
     const nav = screen.getByRole("navigation", { name: "เมนูเถ้าแก่" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(3);
-    expect(within(nav).getByText("สินค้า")).toBeInTheDocument();
+    expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    expect(within(nav).getByRole("link", { name: "สินค้า" })).toHaveAttribute("aria-current", "page");
   });
 });
 

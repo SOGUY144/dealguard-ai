@@ -1,5 +1,6 @@
 // ล้างข้อมูลเดโมก่อนขึ้นเวที: แชตทั้งหมด (ข้อความ/ข้อเสนอ/ออเดอร์/เรื่องที่ส่งต่อหายตามกัน) + ตัวนับ rate limit
-// แล้วคืนของแถมในสต๊อกตาม lib/config/merchant.json · บัญชี สินค้า และรหัสผ่านไม่ถูกแตะ
+// แล้วคืนราคาสินค้า / การตั้งค่าร้าน / ของแถมและสต๊อกตาม lib/config/merchant.json (เถ้าแก่หรือกรรมการอาจแก้ในหน้าสินค้า)
+// บัญชีและรหัสผ่านไม่ถูกแตะ
 // รัน: npm run demo:reset          → ดูว่าจะลบอะไรบ้าง (ยังไม่ลบ)
 //      npm run demo:reset -- --yes  → ลบจริง (ฐานข้อมูลเดียวกับเว็บบน Vercel)
 // เป็นสคริปต์ ไม่ใช่ปุ่มในหน้าเถ้าแก่ เพราะกรรมการมีบัญชี owner ด้วย กดเล่นแล้วข้อมูลกลางเดโมจะหาย
@@ -35,10 +36,23 @@ async function main() {
       await tx`delete from public.chats`;
       await tx`delete from app_private.rate_limits`;
       for (const d of merchant.deadStock) {
-        await tx`update public.dead_stock set qty_available = ${d.qtyAvailable} where sku = ${d.sku}`;
+        await tx`update public.dead_stock set qty_available = ${d.qtyAvailable}, gift_enabled = true where sku = ${d.sku}`;
       }
+      for (const p of merchant.products) {
+        await tx`
+          update public.products
+             set list_price = ${p.listPrice}, unit_cost = ${p.unitCost}, floor_price = ${p.floorPrice},
+                 volume_tiers = ${tx.json(p.volumeTiers)}, cash_discount_pct = ${p.cashDiscountPct},
+                 default_credit_days = ${p.defaultCreditDays}, ai_enabled = true
+           where sku = ${p.sku}`;
+      }
+      await tx`
+        update public.merchants
+           set cost_of_capital_annual = ${merchant.costOfCapitalAnnual}, escalation_deal_value = ${merchant.escalationDealValue}`;
     });
-    console.log(`✓ ล้างแล้ว · คืนของแถม ${merchant.deadStock.map((d) => `${d.name} ${d.qtyAvailable}`).join(", ")}`);
+    console.log(
+      `✓ ล้างแล้ว · คืนราคาสินค้า ${merchant.products.length} รายการ · คืนของแถม ${merchant.deadStock.map((d) => `${d.name} ${d.qtyAvailable}`).join(", ")}`,
+    );
   } finally {
     await sql.end();
   }
