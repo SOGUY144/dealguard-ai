@@ -77,7 +77,7 @@ export async function readDeals(
   let query = db
     .from("orders")
     // เฉพาะออเดอร์ของบัญชีลูกค้า — เถ้าแก่/กรรมการลองสั่งเองจากหน้าลูกค้าไม่นับเป็นดีลของ AI
-    .select("id, chat_id, created_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))")
+    .select("id, chat_id, created_at, paid_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))")
     .eq("profiles.role", "buyer");
   if (since) query = query.gte("created_at", since);
   // ล่าสุดก่อนแล้วกลับลำดับ — เกินเพดานแล้วตัดของเก่าทิ้ง ไม่ใช่ตัดของใหม่
@@ -106,6 +106,7 @@ export async function readDeals(
       marginIfConceded: Number(econ.margin_if_conceded),
       marginOffer: Number(econ.margin_offer),
       recoveredMargin: Number(econ.recovered_margin),
+      paidAt: row.paid_at ? new Date(String(row.paid_at)).toISOString() : null,
     });
   }
   return { deals, incompleteDeals };

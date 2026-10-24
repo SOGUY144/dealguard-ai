@@ -16,6 +16,8 @@ export type OwnerDeal = {
   marginIfConceded: number;
   marginOffer: number;
   recoveredMargin: number;
+  /** เวลาที่เถ้าแก่ยืนยันว่าได้รับเงิน (null = ยังรอชำระ) */
+  paidAt: string | null;
 };
 
 export type OwnerEscalation = {

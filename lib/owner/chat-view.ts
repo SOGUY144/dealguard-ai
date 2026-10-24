@@ -29,10 +29,7 @@ export type ApprovalProduct = { sku: string; name: string; listPrice: number; un
 export function approvalDefaults(messages: ChatMessage[], products: ApprovalProduct[]): { sku: string; qty: number | null } {
   const card = lastOffers(messages);
   const known = (sku: string | undefined) => (sku && products.some((p) => p.sku === sku) ? sku : undefined);
-  if (card && known(card.sku)) {
-    const asked = card.offers.find((o) => o.lever !== "volume") ?? card.offers[0];
-    return { sku: card.sku, qty: asked?.qty ?? null };
-  }
+  if (card && known(card.sku)) return { sku: card.sku, qty: askedQty(messages, card.sku) };
   const shown = [...messages].reverse().find((m) => m.type === "product_card");
   return { sku: known(shown?.type === "product_card" ? shown.sku : undefined) ?? products[0]?.sku ?? "", qty: null };
 }
@@ -49,4 +46,18 @@ export function approvalPreview(product: ApprovalProduct, price: number, qty: nu
     belowFloor: price < product.floorPrice,
     belowCost: price < product.unitCost,
   };
+}
+
+/**
+ * จำนวนที่ลูกค้าขอในรอบต่อรองนี้ = จำนวนของข้อที่ไม่ใช่ "ซื้อเยอะ" ในการ์ดล่าสุดที่มีข้อแบบนั้น
+ * ลูกค้าไม่เอาข้ออื่นจนเหลือแค่ "ซื้อเยอะ" (เช่น 1,500) → ย้อนดูการ์ดก่อนหน้า · ไม่เจอ = null ให้เถ้าแก่กรอกเอง ไม่เดา
+ */
+function askedQty(messages: ChatMessage[], sku: string): number | null {
+  const sinceOrder = messages.slice(messages.findLastIndex((m) => m.type === "order_summary") + 1);
+  for (const m of [...sinceOrder].reverse()) {
+    if (m.type !== "offers" || m.sku !== sku) continue;
+    const asked = m.offers.find((o) => o.lever !== "volume");
+    if (asked) return asked.qty;
+  }
+  return null;
 }

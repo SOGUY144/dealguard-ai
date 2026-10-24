@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Offer } from "@/lib/chat/types";
 import { formatBaht, formatClock, formatQty } from "@/lib/format";
 import type { OwnerDeal } from "@/lib/owner/summary";
+import { PaidToggle, type MarkPaid } from "./paid-toggle";
 
 /** "+฿20,000" · ติดลบแสดง "−฿…" */
 export function signedBaht(n: number): string {
@@ -20,8 +21,8 @@ function Letter({ id }: { id: Offer["id"] }) {
   );
 }
 
-/** ดีลที่ AI ปิดได้ — คอม = ตาราง (ไม่มีคอลัมน์ Deal score) · มือถือ = รายการ */
-export function Deals({ deals }: { deals: OwnerDeal[] }) {
+/** ดีลที่ AI ปิดได้ — คอม = ตาราง (ไม่มีคอลัมน์ Deal score) · มือถือ = รายการ · markPaid = มีคอลัมน์การชำระ + ปุ่มได้รับเงินแล้ว */
+export function Deals({ deals, markPaid }: { deals: OwnerDeal[]; markPaid?: MarkPaid }) {
   const latestFirst = [...deals].reverse();
   return (
     <section
@@ -56,6 +57,11 @@ export function Deals({ deals }: { deals: OwnerDeal[] }) {
                   <th scope="col" className="border-b border-line-soft px-3.5 py-[13px] text-right font-medium whitespace-nowrap">
                     กำไรที่รักษาไว้
                   </th>
+                  {markPaid && (
+                    <th scope="col" className="border-b border-line-soft px-3.5 py-[13px] text-left font-medium whitespace-nowrap">
+                      การชำระ
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -72,6 +78,11 @@ export function Deals({ deals }: { deals: OwnerDeal[] }) {
                     <td>{terms(d.offer)}</td>
                     <td>{formatBaht(d.offer.total)}</td>
                     <td className="text-right font-bold text-accent-ink">{signedBaht(d.recoveredMargin)}</td>
+                    {markPaid && (
+                      <td>
+                        <PaidToggle orderId={d.id} buyerName={d.buyerName} paidAt={d.paidAt} markPaid={markPaid} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -93,6 +104,11 @@ export function Deals({ deals }: { deals: OwnerDeal[] }) {
                   {formatClock(d.at)} · {d.offer.label} · {formatQty(d.offer.qty)} ชิ้น
                 </span>
                 <span className="text-right text-xs text-muted">{formatBaht(d.offer.total)}</span>
+                {markPaid && (
+                  <span className="col-start-2 col-end-4 pt-1">
+                    <PaidToggle orderId={d.id} buyerName={d.buyerName} paidAt={d.paidAt} markPaid={markPaid} />
+                  </span>
+                )}
               </li>
             ))}
           </ul>

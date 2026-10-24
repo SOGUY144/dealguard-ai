@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { getMockOrder } from "@/lib/chat/mock-orders";
 import type { Storefront } from "@/lib/chat/types";
@@ -53,29 +53,42 @@ describe("OrderReceipt (Mobile-Order)", () => {
 });
 
 describe("OrderReceipt — ส่วนชำระเงิน", () => {
-  it("โหมดทดลอง: บอกวันครบกำหนด · QR ตัวอย่าง · กดจำลองว่าชำระแล้ว", async () => {
-    const { OrderReceipt } = await import("../order-receipt");
-    const { render: r, screen: s, fireEvent: f } = await import("@testing-library/react");
-    const order = {
-      id: "demo-X",
-      productName: "สายชาร์จ",
-      at: "2026-10-25T03:00:00.000Z",
-      offer: { id: "A" as const, lever: "list" as const, label: "ราคาที่เถ้าแก่อนุมัติ", pricePerUnit: 125, qty: 1000, conditionText: "1,000 ชิ้น · เครดิต 7 วัน", total: 125_000, creditDays: 7 },
-    };
-    const storefront = {
-      storeName: "ร้าน",
-      tagline: "",
-      ownerName: "เฮียชัย",
-      assistantName: "",
-      bankAccountName: "บัญชีร้าน",
-      contactChannel: "LINE",
-      orderRefPlaceholder: "",
-    };
-    r(<OrderReceipt order={order} storefront={storefront} payment={{ qrSvg: "<svg></svg>", mode: "demo", dueAt: "2026-11-01T03:00:00.000Z" }} />);
-    const section = s.getByRole("region", { name: "ชำระเงิน" });
+  const order = {
+    id: "o-1",
+    productName: "สายชาร์จ",
+    at: "2026-10-25T03:00:00.000Z",
+    paidAt: null,
+    offer: { id: "A" as const, lever: "list" as const, label: "ราคาที่เถ้าแก่อนุมัติ", pricePerUnit: 125, qty: 1000, conditionText: "1,000 ชิ้น · เครดิต 7 วัน", total: 125_000, creditDays: 7 },
+  };
+  const payment = (patch: Partial<{ mode: "promptpay" | "demo"; paidAt: string | null }> = {}) => ({
+    qrSvg: "<svg></svg>",
+    mode: "promptpay" as const,
+    dueAt: "2026-11-01T03:00:00.000Z",
+    paidAt: null,
+    ...patch,
+  });
+
+  it("ยังไม่จ่าย (พร้อมเพย์จริง): วันครบกำหนด · QR พร้อมยอด · รอร้านยืนยัน · ไม่มีปุ่มจำลอง", () => {
+    render(<OrderReceipt order={order} storefront={storefront} payment={payment()} />);
+    const section = screen.getByRole("region", { name: "ชำระเงิน" });
     expect(section).toHaveTextContent("ชำระภายใน 1 พ.ย. 2569");
-    expect(section).toHaveTextContent("QR ตัวอย่าง (โหมดทดลอง)");
-    f.click(s.getByRole("button", { name: "จำลองว่าชำระแล้ว" }));
-    expect(s.getByRole("status")).toHaveTextContent("ชำระแล้ว ฿125,000 (จำลอง)");
+    expect(within(section).getByRole("img", { name: "QR พร้อมเพย์ ยอด ฿125,000" })).toBeInTheDocument();
+    expect(section).toHaveTextContent("รอร้านยืนยันการชำระ");
+    expect(screen.queryByRole("button", { name: /จำลอง/ })).not.toBeInTheDocument();
+  });
+
+  it("ร้านยังไม่ตั้งพร้อมเพย์: บอกว่าเป็น QR ตัวอย่าง ให้โอนเข้าบัญชีร้านแทน · ไม่มีปุ่มจำลอง", () => {
+    render(<OrderReceipt order={order} storefront={storefront} payment={payment({ mode: "demo" })} />);
+    const section = screen.getByRole("region", { name: "ชำระเงิน" });
+    expect(section).toHaveTextContent("QR ตัวอย่าง สแกนจ่ายไม่ได้ · โอนเข้าบัญชีร้านด้านล่างแทน");
+    expect(screen.queryByRole("button", { name: /จำลอง/ })).not.toBeInTheDocument();
+  });
+
+  it("ร้านยืนยันว่าได้รับเงินแล้ว: ขึ้นชำระแล้วพร้อมวันที่ ไม่แสดง QR อีก", () => {
+    render(<OrderReceipt order={order} storefront={storefront} payment={payment({ paidAt: "2026-10-26T04:30:00.000Z" })} />);
+    const section = screen.getByRole("region", { name: "ชำระเงิน" });
+    expect(within(section).getByRole("status")).toHaveTextContent("ชำระแล้ว ฿125,000");
+    expect(section).toHaveTextContent("ร้านยืนยันเมื่อ 26 ต.ค. 2569 11:30");
+    expect(within(section).queryByRole("img")).not.toBeInTheDocument();
   });
 });

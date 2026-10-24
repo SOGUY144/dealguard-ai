@@ -17,6 +17,7 @@ import {
 
 // ตัวเลขตัวอย่างจาก SKILL §6.5 (ขอ ฿125 × 1,000 → ยอมลดได้กำไร ฿25,000)
 const deal = (letter: 0 | 1 | 2, marginOffer: number, at: string): OwnerDeal => ({
+  paidAt: null,
   id: `o${letter}`,
   at,
   buyerName: "คุณนก",

@@ -8,6 +8,7 @@ import { storefront } from "@/lib/config/storefront";
 import { countOpenEscalations, readDeals } from "@/lib/owner/dashboard";
 import { dealRangeStart, parseDealRange } from "@/lib/owner/summary";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { markOrderPaid } from "../actions";
 
 export const metadata: Metadata = { title: `ดีลทั้งหมด — ${storefront.storeName}` };
 
@@ -30,7 +31,7 @@ async function OwnerDeals({ searchParams }: { searchParams: PageProps<"/owner/de
   return (
     <OwnerShell current="deals" openCount={openCount}>
       <OwnerLive />
-      <DealHistory deals={deals} range={range} />
+      <DealHistory deals={deals} range={range} markPaid={markOrderPaid} />
     </OwnerShell>
   );
 }

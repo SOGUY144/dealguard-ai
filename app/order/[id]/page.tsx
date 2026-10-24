@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { OrderLive } from "@/components/order/order-live";
 import { OrderReceipt } from "@/components/order/order-receipt";
 import { requireUser } from "@/lib/auth/dal";
 import { readOrder } from "@/lib/chat-server/orders";
@@ -26,7 +27,14 @@ async function Order({ params }: { params: PageProps<"/order/[id]">["params"] })
   const { id } = await params;
   await requireUser(`/order/${encodeURIComponent(id)}`);
   // ออเดอร์จริงอ่านด้วยสิทธิ์ของผู้ใช้ (RLS) — ลูกค้าเปิดออเดอร์ของคนอื่นได้ "ไม่พบ"
-  const order = getMockOrder(id) ?? (await readOrder(await createSupabaseServerClient(), id));
+  const mock = getMockOrder(id);
+  const order = mock ?? (await readOrder(await createSupabaseServerClient(), id));
   if (!order) notFound();
-  return <OrderReceipt order={order} storefront={storefront} payment={await paymentFor(order)} />;
+  return (
+    <>
+      {/* ร้านกด "ได้รับเงินแล้ว" → ใบสรุปเปลี่ยนเอง (ออเดอร์เดโมไม่มีในฐานข้อมูล ไม่ต้องฟัง) */}
+      {!mock && <OrderLive orderId={order.id} />}
+      <OrderReceipt order={order} storefront={storefront} payment={await paymentFor(order)} />
+    </>
+  );
 }

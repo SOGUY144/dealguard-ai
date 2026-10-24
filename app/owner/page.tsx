@@ -14,6 +14,7 @@ import { buttonClass } from "@/components/ui/button";
 import { requireOwner } from "@/lib/auth/dal";
 import { storefront } from "@/lib/config/storefront";
 import { readOwnerData } from "@/lib/owner/dashboard";
+import { markOrderPaid } from "./actions";
 import { ownerInitials, summarize, thaiDate } from "@/lib/owner/summary";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -123,7 +124,7 @@ async function OwnerDashboard() {
               <ProfitChart deals={deals} />
             </div>
             <div className="md:col-start-1">
-              <Deals deals={deals} />
+              <Deals deals={deals} markPaid={markOrderPaid} />
             </div>
           </div>
           {/* มือถือไม่มีแถบซ้าย — ปุ่มออกจากระบบอยู่ท้ายหน้า (ไม่มีในไฟล์ดีไซน์) */}

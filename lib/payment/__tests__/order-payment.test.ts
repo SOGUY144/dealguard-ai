@@ -7,6 +7,7 @@ const order = {
   id: "11111111-2222-3333-4444-555555555555",
   productName: "สายชาร์จ Type-C 1 เมตร",
   at: "2026-10-25T03:00:00.000Z",
+  paidAt: null as string | null,
   offer: { id: "A" as const, lever: "list" as const, label: "ราคาที่เถ้าแก่อนุมัติ", pricePerUnit: 125, qty: 1000, conditionText: "", total: 125_000, creditDays: 7 },
 };
 
@@ -22,6 +23,11 @@ describe("paymentFor", () => {
     const p = await paymentFor({ ...order, offer: { ...order.offer, creditDays: 0 } }, "0812345678");
     expect(p.mode).toBe("promptpay");
     expect(p.dueAt).toBeNull();
+  });
+
+  it("ร้านยืนยันรับเงินแล้ว → ส่งเวลาที่ยืนยันไปให้ใบสรุป", async () => {
+    const p = await paymentFor({ ...order, paidAt: "2026-10-26T04:30:00.000Z" }, "0812345678");
+    expect(p.paidAt).toBe("2026-10-26T04:30:00.000Z");
   });
 
   it("เลขพร้อมเพย์ผิดรูปแบบ → กลับไปใช้ QR ตัวอย่าง", async () => {

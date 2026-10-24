@@ -21,6 +21,7 @@ const deals: OwnerDeal[] = [45_000, 36_332, 42_000].map((marginOffer, i) => ({
   marginIfConceded: 25_000,
   marginOffer,
   recoveredMargin: marginOffer - 25_000,
+  paidAt: null,
 }));
 
 const escalations: OwnerEscalation[] = [
@@ -52,6 +53,14 @@ describe("Deals", () => {
     expect(rows[0]).toHaveTextContent("฿145 × 1,000 + แถม 200");
     expect(rows[2]).toHaveTextContent("คุณนก");
     expect(rows[2]).toHaveTextContent("+฿20,000");
+  });
+
+  it("มีปุ่มชำระเงิน → ทุกแถวบอกสถานะ รอชำระ / ชำระแล้ว", () => {
+    const withPaid = deals.map((d, i) => ({ ...d, paidAt: i === 0 ? "2026-10-24T05:00:00.000Z" : null }));
+    render(<Deals deals={withPaid} markPaid={async () => ({ ok: true as const, paidAt: null })} />);
+    const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    expect(rows[2]).toHaveTextContent("ชำระแล้ว");
+    expect(rows[0]).toHaveTextContent("รอชำระ");
   });
 
   it("ยังไม่มีดีล → บอกว่ายังไม่มี", () => {

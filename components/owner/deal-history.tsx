@@ -6,10 +6,11 @@ import { cn } from "@/lib/cn";
 import { formatBaht, formatClock, formatQty } from "@/lib/format";
 import { DEAL_RANGES, groupDealsByDay, summarize, type DealRange, type OwnerDeal } from "@/lib/owner/summary";
 import { signedBaht } from "./deals";
+import { PaidToggle, type MarkPaid } from "./paid-toggle";
 
 const terms = (o: Offer) => `${formatBaht(o.pricePerUnit)} × ${formatQty(o.qty)}${o.bundle ? ` + แถม ${formatQty(o.bundle.qty)}` : ""}`;
 
-export function DealHistory({ deals, range }: { deals: OwnerDeal[]; range: DealRange }) {
+export function DealHistory({ deals, range, markPaid }: { deals: OwnerDeal[]; range: DealRange; markPaid?: MarkPaid }) {
   const totals = summarize(deals);
   const groups = groupDealsByDay(deals);
   return (
@@ -75,6 +76,7 @@ export function DealHistory({ deals, range }: { deals: OwnerDeal[]; range: DealR
                     <span className="text-base font-bold text-accent-ink">{signedBaht(d.recoveredMargin)}</span>
                     <span className="text-xs text-muted">{formatBaht(d.offer.total)}</span>
                   </span>
+                  {markPaid && <PaidToggle orderId={d.id} buyerName={d.buyerName} paidAt={d.paidAt} markPaid={markPaid} />}
                   {d.chatId && (
                     <Link
                       href={`/owner/chats/${d.chatId}`}
