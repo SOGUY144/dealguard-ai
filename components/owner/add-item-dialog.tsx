@@ -1,25 +1,34 @@
 "use client";
 
 // เพิ่มสินค้าขาย หรือของแถม (ไม่มีในไฟล์ดีไซน์ — ปุ่ม "เพิ่มสินค้า" ของ Owner-Settings) · ขั้นราคาตามจำนวนตั้งต่อในหน้าสินค้า
-import { useState } from "react";
+// ใส่รูปได้ตั้งแต่ตอนเพิ่ม: ย่อรูปตอนเลือก (เห็นตัวอย่างทันที) · กดเพิ่ม → สร้างสินค้าก่อน แล้วค่อยอัปโหลดรูปให้รหัสนั้น
+import { ImagePlus, LoaderCircle, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ProductThumb } from "@/components/ui/product-thumb";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { validateGift, validateNewProduct, type GiftForm, type NewProduct } from "@/lib/owner/catalog-rules";
+import { validateGift, validateNewProduct, type GiftForm, type ImageResult, type NewProduct } from "@/lib/owner/catalog-rules";
 import type { FieldErrors, SaveResult } from "@/lib/owner/product-settings";
+import { imageForm, shrinkImage } from "./image-picker";
 import { Field, Hidden, Modal, StatusLine, type Status } from "./settings-ui";
 
 type Kind = "product" | "gift";
+/** รูปตอนเพิ่ม: ไม่ได้เลือก / ใส่แล้ว / สินค้าเพิ่มแล้วแต่รูปพลาด (ข้อความจาก server) */
+export type AddedImage = { kind: "none" } | { kind: "ok" } | { kind: "failed"; reason: string };
 type Props = {
   takenSkus: string[];
   addProduct: (p: NewProduct) => Promise<SaveResult>;
   addGift: (g: GiftForm) => Promise<SaveResult>;
-  onAdded: (kind: Kind, sku: string) => void;
+  uploadImage: (form: FormData) => Promise<ImageResult>;
+  onAdded: (kind: Kind, sku: string, image: AddedImage) => void;
   onClose: () => void;
+  /** test ใส่ตัวย่อรูปปลอมได้ (jsdom ไม่มี canvas) */
+  shrink?: (file: File) => Promise<Blob>;
 };
 
 const toNum = (s: string) => (s.trim() === "" ? Number.NaN : Number(s.replace(/,/g, "")));
 
-export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose }: Props) {
+export function AddItemDialog({ takenSkus, addProduct, addGift, uploadImage, onAdded, onClose, shrink = shrinkImage }: Props) {
   const [kind, setKind] = useState<Kind>("product");
   const [v, setV] = useState({
     name: "",
@@ -33,6 +42,7 @@ export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose
     qtyAvailable: "",
   });
   const [tried, setTried] = useState(false);
+  const [photo, setPhoto] = useState<Photo>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -72,7 +82,7 @@ export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose
     try {
       const result = kind === "product" ? await addProduct(product) : await addGift(gift);
       if (result.ok) {
-        onAdded(kind, v.sku.trim());
+        onAdded(kind, v.sku.trim(), photo ? await uploadPhoto(photo.blob) : { kind: "none" });
         return;
       }
       const { form: formError, ...fieldErrors } = result.errors;
@@ -80,6 +90,16 @@ export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose
       setStatus({ kind: "error", message: formError ?? "ยังเพิ่มไม่ได้ แก้ช่องที่ขึ้นสีส้มก่อน" });
     } catch {
       setStatus({ kind: "error", message: "เพิ่มไม่สำเร็จ ลองใหม่อีกครั้ง" });
+    }
+  }
+
+  /** สินค้าเพิ่มแล้ว — รูปพลาดไม่ทำให้การเพิ่มล้ม (ใส่ใหม่ได้ที่หน้าสินค้า) */
+  async function uploadPhoto(blob: Blob): Promise<AddedImage> {
+    try {
+      const result = await uploadImage(imageForm(kind, v.sku.trim(), blob));
+      return result.ok ? { kind: "ok" } : { kind: "failed", reason: result.error };
+    } catch {
+      return { kind: "failed", reason: "อัปโหลดไม่สำเร็จ" };
     }
   }
 
@@ -119,6 +139,7 @@ export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose
         }}
         className="flex flex-col gap-3.5"
       >
+        <PhotoField photo={photo} onChange={setPhoto} shrink={shrink} disabled={status.kind === "saving"} />
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-3.5">
           <Field label="ชื่อสินค้า" type="text" maxLength={80} autoFocus value={v.name} onChange={set("name")} error={errors.name} />
           <Field
@@ -142,7 +163,7 @@ export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose
               <Field label="ลดเพิ่มเมื่อจ่ายสด" suffix="%" value={v.cashDiscountPct} onChange={set("cashDiscountPct")} error={errors.cashDiscountPct} />
               <Field label="เครดิตปกติ" suffix="วัน" value={v.defaultCreditDays} onChange={set("defaultCreditDays")} error={errors.defaultCreditDays} />
             </div>
-            <span className="text-xs text-muted">ราคาตามจำนวนและรูปสินค้า ตั้งต่อได้หลังเพิ่มแล้ว</span>
+            <span className="text-xs text-muted">ราคาตามจำนวน ตั้งต่อได้หลังเพิ่มแล้ว</span>
           </>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(min(140px,100%),1fr))] gap-3.5">
@@ -162,5 +183,96 @@ export function AddItemDialog({ takenSkus, addProduct, addGift, onAdded, onClose
         <StatusLine status={status} className="text-right" />
       </form>
     </Modal>
+  );
+}
+
+type Photo = { blob: Blob; preview: string } | null;
+
+/** เลือกรูป (ไม่บังคับ) — ย่อรูปทันทีที่เลือก ให้รู้ตั้งแต่ตอนนี้ถ้ารูปเปิดไม่ได้ */
+function PhotoField({
+  photo,
+  onChange,
+  shrink,
+  disabled,
+}: {
+  photo: Photo;
+  onChange: (p: Photo) => void;
+  shrink: (file: File) => Promise<Blob>;
+  disabled: boolean;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [reading, setReading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // คืนหน่วยความจำของรูปตัวอย่างเมื่อเปลี่ยน / เอาออก / ปิดหน้าต่าง
+  useEffect(
+    () => () => {
+      if (photo) URL.revokeObjectURL(photo.preview);
+    },
+    [photo],
+  );
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setReading(true);
+    try {
+      const blob = await shrink(file);
+      onChange({ blob, preview: URL.createObjectURL(blob) });
+    } catch {
+      setError("อ่านรูปนี้ไม่ได้ ลองใช้ไฟล์ JPG หรือ PNG");
+    } finally {
+      setReading(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <ProductThumb src={photo?.preview} className="size-16 rounded-2xl" />
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap gap-2">
+          <input
+            ref={input}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/*"
+            className="sr-only"
+            aria-label="เลือกรูปสินค้าใหม่"
+            tabIndex={-1}
+            onChange={(e) => void onFile(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            disabled={disabled || reading}
+            onClick={() => input.current?.click()}
+            className={buttonClass("secondary", "h-10 px-4 text-[13px] font-medium")}
+          >
+            {reading ? (
+              <LoaderCircle aria-hidden="true" size={15} className="motion-safe:animate-spin" />
+            ) : (
+              <ImagePlus aria-hidden="true" size={15} />
+            )}
+            {photo ? "เปลี่ยนรูป" : "ใส่รูป"}
+          </button>
+          {photo && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(null)}
+              className={buttonClass("ghost", "h-10 px-3 text-[13px] font-medium")}
+            >
+              <X aria-hidden="true" size={15} />
+              เอารูปออก
+            </button>
+          )}
+        </div>
+        {error ? (
+          <span role="alert" className="text-xs text-warn-ink">
+            {error}
+          </span>
+        ) : (
+          <span className="text-xs text-muted">ไม่บังคับ · ลูกค้าเห็นรูปนี้ในรายการสินค้าและในแชต</span>
+        )}
+      </div>
+    </div>
   );
 }

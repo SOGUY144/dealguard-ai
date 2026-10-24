@@ -160,10 +160,19 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
           takenSkus={takenSkus}
           addProduct={actions.addProduct}
           addGift={(g) => actions.saveGift(g)}
-          onAdded={(kind, sku) => {
+          uploadImage={actions.uploadImage}
+          shrink={shrink}
+          onAdded={(kind, sku, image) => {
             setDialog(null);
             setPicked({ kind, sku });
-            setNotice({ kind: "saved", message: "เพิ่มแล้ว ตั้งราคาตามจำนวนและใส่รูปต่อได้เลย" });
+            setNotice(
+              image.kind === "failed"
+                ? { kind: "error", message: `เพิ่มแล้ว แต่ใส่รูปไม่สำเร็จ (${image.reason}) ใส่รูปใหม่ได้ที่หน้าสินค้า` }
+                : {
+                    kind: "saved",
+                    message: image.kind === "ok" ? "เพิ่มแล้วพร้อมรูป ตั้งราคาตามจำนวนต่อได้เลย" : "เพิ่มแล้ว ตั้งราคาตามจำนวนและใส่รูปต่อได้เลย",
+                  },
+            );
             refresh();
           }}
           onClose={() => setDialog(null)}

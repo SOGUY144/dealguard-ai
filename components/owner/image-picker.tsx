@@ -27,6 +27,15 @@ export async function shrinkImage(file: File): Promise<Blob> {
   return jpeg;
 }
 
+/** ฟอร์มอัปโหลดรูป (ใช้ทั้งหน้าสินค้าและหน้าต่างเพิ่มสินค้า) */
+export function imageForm(kind: "product" | "gift", sku: string, blob: Blob): FormData {
+  const form = new FormData();
+  form.set("kind", kind);
+  form.set("sku", sku);
+  form.set("file", new File([blob], `${sku}.${blob.type === "image/webp" ? "webp" : "jpg"}`, { type: blob.type }));
+  return form;
+}
+
 type Props = {
   kind: "product" | "gift";
   sku: string;
@@ -57,11 +66,7 @@ export function ImagePicker({ kind, sku, name, imageUrl, upload, remove, onChang
         setError("อ่านรูปนี้ไม่ได้ ลองใช้ไฟล์ JPG หรือ PNG");
         return;
       }
-      const form = new FormData();
-      form.set("kind", kind);
-      form.set("sku", sku);
-      form.set("file", new File([blob], `${sku}.${blob.type === "image/webp" ? "webp" : "jpg"}`, { type: blob.type }));
-      const result = await upload(form);
+      const result = await upload(imageForm(kind, sku, blob));
       if (!result.ok) {
         setError(result.error);
         return;

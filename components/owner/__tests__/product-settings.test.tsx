@@ -208,6 +208,93 @@ describe("เพิ่ม / ลบ / ของแถม / รูป / นำเ�
     );
   });
 
+  describe("ใส่รูปตั้งแต่ตอนเพิ่ม (ผู้ใช้ขอ 25 ต.ค. 2569)", () => {
+    // jsdom ไม่มี URL.createObjectURL — ใช้ทำรูปตัวอย่างในหน้าต่าง
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    const photo = () => new File(["png"], "cable.png", { type: "image/png" });
+
+    function fillProduct(dialog: HTMLElement) {
+      change(within(dialog).getByLabelText("ชื่อสินค้า"), "สาย Lightning");
+      change(within(dialog).getByLabelText("รหัสสินค้า (SKU)"), "CBL-L-1M");
+      change(within(dialog).getByLabelText("ราคาขาย"), "180");
+      change(within(dialog).getByLabelText("ต้นทุน (ลูกค้าไม่เห็น)"), "110");
+      change(within(dialog).getByLabelText("ราคาพื้น (ลูกค้าไม่เห็น)"), "140");
+    }
+    const openDialog = () => {
+      fireEvent.click(screen.getByRole("button", { name: "เพิ่มสินค้า" }));
+      return screen.getByRole("dialog", { name: "เพิ่มสินค้า" });
+    };
+    const pickPhoto = async (dialog: HTMLElement) => {
+      fireEvent.change(within(dialog).getByLabelText("เลือกรูปสินค้าใหม่"), { target: { files: [photo()] } });
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "เปลี่ยนรูป" })).toBeInTheDocument());
+    };
+
+    it("เลือกรูปในหน้าต่าง → กดเพิ่ม → สินค้าใหม่ได้รูปนั้นทันที (ไม่ต้องไปใส่ทีหลัง)", async () => {
+      const actions = renderWith();
+      const dialog = openDialog();
+      fillProduct(dialog);
+      await pickPhoto(dialog);
+      expect(actions.uploadImage).not.toHaveBeenCalled();
+      fireEvent.click(within(dialog).getByRole("button", { name: "เพิ่ม" }));
+      await waitFor(() => expect(actions.uploadImage).toHaveBeenCalledTimes(1));
+      const form = vi.mocked(actions.uploadImage).mock.calls[0][0];
+      expect([form.get("kind"), form.get("sku"), (form.get("file") as File).type]).toEqual(["product", "CBL-L-1M", "image/png"]);
+      expect(vi.mocked(actions.addProduct).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(actions.uploadImage).mock.invocationCallOrder[0]);
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(screen.getByRole("status")).toHaveTextContent("เพิ่มแล้วพร้อมรูป");
+    });
+
+    it("ของแถมก็ใส่รูปได้", async () => {
+      const actions = renderWith();
+      const dialog = openDialog();
+      fireEvent.click(within(dialog).getByRole("radio", { name: "ของแถม (ของค้างสต๊อก)" }));
+      change(within(dialog).getByLabelText("ชื่อสินค้า"), "เคสใส");
+      change(within(dialog).getByLabelText("รหัสสินค้า (SKU)"), "CASE-01");
+      change(within(dialog).getByLabelText("ต้นทุนต่อชิ้น (ลูกค้าไม่เห็น)"), "8");
+      change(within(dialog).getByLabelText("ลูกค้ารู้สึกว่าคุ้ม"), "40");
+      change(within(dialog).getByLabelText("เหลือในสต๊อก"), "300");
+      await pickPhoto(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "เพิ่ม" }));
+      await waitFor(() => expect(actions.uploadImage).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(actions.uploadImage).mock.calls[0][0].get("kind")).toBe("gift");
+    });
+
+    it("เพิ่มสินค้าไม่ผ่าน → ไม่อัปโหลดรูป · รูปที่เลือกยังอยู่ แก้แล้วกดใหม่ได้", async () => {
+      const actions = renderWith({ addProduct: vi.fn(async () => ({ ok: false as const, errors: { sku: "รหัสนี้มีอยู่แล้ว" } })) });
+      const dialog = openDialog();
+      fillProduct(dialog);
+      await pickPhoto(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "เพิ่ม" }));
+      await waitFor(() => expect(within(dialog).getByText("รหัสนี้มีอยู่แล้ว")).toBeInTheDocument());
+      expect(actions.uploadImage).not.toHaveBeenCalled();
+      expect(within(dialog).getByRole("button", { name: "เปลี่ยนรูป" })).toBeInTheDocument();
+    });
+
+    it("เพิ่มสินค้าได้ แต่อัปโหลดรูปพลาด → สินค้ายังเพิ่มแล้ว บอกให้ใส่รูปใหม่", async () => {
+      renderWith({ uploadImage: vi.fn(async () => ({ ok: false as const, error: "รูปใหญ่เกินไป" })) });
+      const dialog = openDialog();
+      fillProduct(dialog);
+      await pickPhoto(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "เพิ่ม" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(screen.getByRole("alert")).toHaveTextContent("เพิ่มแล้ว แต่ใส่รูปไม่สำเร็จ (รูปใหญ่เกินไป) ใส่รูปใหม่ได้ที่หน้าสินค้า");
+    });
+
+    it("เลือกรูปแล้วเปลี่ยนใจ → เอารูปออกได้ · ไม่เลือกรูป → ไม่อัปโหลดอะไร", async () => {
+      const actions = renderWith();
+      const dialog = openDialog();
+      fillProduct(dialog);
+      await pickPhoto(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "เอารูปออก" }));
+      expect(within(dialog).getByRole("button", { name: "ใส่รูป" })).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole("button", { name: "เพิ่ม" }));
+      await waitFor(() => expect(actions.addProduct).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(actions.uploadImage).not.toHaveBeenCalled();
+    });
+  });
+
   it("ลบสินค้า: ต้องยืนยันก่อน", async () => {
     const actions = renderWith();
     fireEvent.click(screen.getByRole("button", { name: "ลบสินค้านี้" }));
