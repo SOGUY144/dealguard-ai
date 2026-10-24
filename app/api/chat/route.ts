@@ -1,6 +1,6 @@
 // API แชตลูกค้า — GET โหลด/สร้างแชต · POST ส่งการกระทำ (ข้อความ, เลือกสินค้า, ยืนยันข้อเสนอ, คุยกับคน)
 // ตัวเลขราคาทั้งหมดคิดที่ server · browser ส่งได้แค่ข้อความ + id ของข้อเสนอที่จะยืนยัน
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { warmUpIntentLlm } from "@/lib/ai/openai";
 import { getCurrentUser } from "@/lib/auth/dal";
@@ -45,7 +45,7 @@ export async function GET() {
     if (!me) return fail(401, "unauthorized");
     if (me === "not_buyer") return fail(403, "buyers_only");
     // ปลุก GPT ไว้ก่อนลูกค้าพิมพ์ข้อความแรก (request แรกหลังว่างนาน ช้า 7–13 วินาที)
-    warmUpIntentLlm();
+    after(warmUpIntentLlm);
     return NextResponse.json(await loadChat(createChatDeps(), me), { headers: NO_STORE });
   } catch (err) {
     console.error("[api/chat]", err);

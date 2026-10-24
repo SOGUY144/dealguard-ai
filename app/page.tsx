@@ -1,5 +1,6 @@
 import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
+import { after } from "next/server";
 import { Suspense } from "react";
 import { ChatScreenFromUrl } from "@/components/chat/chat-screen-from-url";
 import { warmUpIntentLlm } from "@/lib/ai/openai";
@@ -38,7 +39,7 @@ async function BuyerChat() {
     displayName: user.displayName,
   });
   // ปลุก GPT ไว้ก่อนลูกค้าพิมพ์ (request แรกหลังว่างนานช้า 7–13 วินาที)
-  warmUpIntentLlm();
+  after(warmUpIntentLlm);
   return (
     <ChatScreenFromUrl
       storefront={storefront}

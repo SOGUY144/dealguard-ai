@@ -279,7 +279,12 @@ code review 9 ข้อ แก้ครบ + test ใหม่ทุกข้อ
 - [ ] **ผู้ใช้ใส่คีย์ทั้งหมดใน Vercel dashboard เอง**
 - [ ] deploy preview → รัน acceptance 8 ข้อบน URL จริง → ซ้อมสคริปต์ 60 วินาทีและจับเวลา
 - [ ] เตรียมบัญชีลูกค้าเดโม ("คุณนก") ที่ล็อกอินค้างไว้ก่อนขึ้นเวที เพราะการล็อกอินจะกินเวลาเดโม
-- [ ] ปุ่ม reset ข้อมูลเดโม (เฉพาะ owner)
+- [x] ล้างข้อมูลเดโม: `npm run demo:reset` (ดูจำนวนก่อน) / `npm run demo:reset -- --yes` (ลบจริง) — ลบแชตทั้งหมด (ข้อความ/ข้อเสนอ/ออเดอร์/เรื่องที่ส่งต่อตามไป) + rate limit แล้วคืนของแถมในสต๊อก · ทำเป็นสคริปต์แทนปุ่ม เพราะกรรมการมีบัญชี owner กดเล่นแล้วข้อมูลกลางเดโมจะหาย
+- [x] ฟังก์ชันบน Vercel อยู่ `icn1` (โซล) ตาม Supabase `ap-northeast-2` (`vercel.json`) — ค่าเริ่มต้น iad1 จะทำให้ทุก query ข้ามทวีป
+- [x] ปลุก GPT ผ่าน `after()` — บน serverless ฟังก์ชันถูกหยุดหลังตอบ promise ที่ไม่ได้รอจะไม่จบ
+- [ ] Vercel ต่อ GitHub ได้แค่บัญชี `Gupalmza` แต่ repo อยู่ที่ `SOGUY144` → ผู้ใช้ต้องเพิ่มบัญชี GitHub นี้ใน Vercel ตอน import โปรเจกต์
+- env ที่ต้องใส่ใน Vercel: ทุกตัวใน `.env.example` (`SUPABASE_DB_URL` ไม่ต้อง ใช้แค่สคริปต์บนเครื่อง) · `SITE_URL` = โดเมน Vercel จริง
+- Supabase Auth > URL Configuration: Site URL = โดเมน Vercel · Redirect URLs = `https://<โดเมน>/auth/callback` และ `http://localhost:3000/auth/callback` (ไม่ใช้ wildcard)
 - **เสร็จเมื่อ:** สคริปต์เดโม SKILL §7 วิ่งครบบน URL Vercel โดยไม่ต้องแก้อะไรเพิ่ม
 
 ## เฟส 11 — ขัดเงา / ถ้ามีเวลา

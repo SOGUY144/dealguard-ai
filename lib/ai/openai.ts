@@ -42,11 +42,14 @@ export function createIntentLlm(): IntentLlm | null {
   };
 }
 
-/** ยิงคำขอเล็กๆ ให้การเชื่อมต่อพร้อม (cold start 7–13 วินาที) — เรียกตอนลูกค้าเปิดแชต */
+/**
+ * ยิงคำขอเล็กๆ ให้การเชื่อมต่อพร้อม (cold start 7–13 วินาที) — เรียกตอนลูกค้าเปิดแชต
+ * เรียกผ่าน after() ของ Next: บน Vercel ฟังก์ชันอาจถูกหยุดทันทีหลังตอบ ถ้าไม่รอ promise นี้
+ */
 let lastWarmUp = 0;
-export function warmUpIntentLlm(): void {
+export async function warmUpIntentLlm(): Promise<void> {
   const llm = createIntentLlm();
   if (!llm || Date.now() - lastWarmUp < 4 * 60_000) return;
   lastWarmUp = Date.now();
-  void llm.extract({ text: "สวัสดี", history: [], products: [] }).catch(() => {});
+  await llm.extract({ text: "สวัสดี", history: [], products: [] }).catch(() => {});
 }

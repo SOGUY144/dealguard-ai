@@ -12,6 +12,7 @@
     "voice-samples": "tsx --env-file-if-exists=.env.local scripts/voice-samples.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
+    "demo:reset": "tsx --env-file-if-exists=.env.local scripts/reset-demo.ts",
     "test:db": "node --env-file=.env.local ./node_modules/vitest/vitest.mjs run --config vitest.db.config.mts"
   },
   "dependencies": {
