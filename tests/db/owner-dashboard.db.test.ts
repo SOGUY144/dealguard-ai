@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChatMessageOf } from "@/lib/chat/types";
 import { handleAction, type PipelineDeps } from "@/lib/chat-server/pipeline";
 import { SupabaseChatStore } from "@/lib/chat-server/supabase-store";
-import { readOwnerData } from "@/lib/owner/dashboard";
+import { countOpenEscalations, readOwnerData } from "@/lib/owner/dashboard";
 import { summarize } from "@/lib/owner/summary";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -114,12 +114,13 @@ describe("readOwnerData", () => {
     expect(deals.some((d) => d.buyerName === "เถ้าแก่ทดสอบ")).toBe(false);
   });
 
-  it("นับเรื่องรอตัดสินของวันนี้ตามจริง (ไม่ติดเพดานรายการ) และไม่รวมของวันก่อน", async () => {
+  it("นับเรื่องรอตัดสินตามจริง (ไม่ติดเพดานรายการ) · เรื่องที่ยังไม่ปิดค้างข้ามวันยังอยู่ (รีวิวรอบ 3)", async () => {
     const { escalations, openCount } = await readOwnerData(owner.client);
     expect(openCount).toBeGreaterThanOrEqual(escalations.length);
     const tomorrow = new Date(Date.now() + 36 * 60 * 60 * 1000);
     const later = await readOwnerData(owner.client, tomorrow);
-    expect(later.escalations.find((e) => e.kind === "refund" && e.brief[0].includes("คุณแดชบอร์ด"))).toBeUndefined();
+    expect(later.escalations.find((e) => e.kind === "refund" && e.brief[0].includes("คุณแดชบอร์ด"))).toBeDefined();
+    expect(await countOpenEscalations(owner.client, tomorrow)).toBe(later.openCount);
   });
 
   it("ออเดอร์ก่อนวันนี้ (เวลาไทย) ไม่นับ", async () => {

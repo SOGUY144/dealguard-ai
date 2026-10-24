@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, render, screen } from "@testing-library/react";
+import { Activity } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OwnerLive, type ConnectLive } from "../owner-live";
 
@@ -31,10 +32,38 @@ describe("OwnerLive", () => {
     const { connect, handlers } = fakeConnect();
     render(<OwnerLive connect={connect} />);
     act(() => handlers.status!("live"));
+    act(() => vi.advanceTimersByTime(400));
+    refresh.mockClear();
     act(() => handlers.change!());
     act(() => vi.advanceTimersByTime(400));
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/หลุด/)).not.toBeInTheDocument();
+  });
+
+  it("ต่อติดครั้งแรก → ดึงหนึ่งครั้ง เผื่อมีอะไรเกิดระหว่างโหลดหน้ากับเริ่มฟัง", () => {
+    const { connect, handlers } = fakeConnect();
+    render(<OwnerLive connect={connect} />);
+    act(() => handlers.status!("live"));
+    act(() => vi.advanceTimersByTime(400));
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("ไปหน้าอื่นแล้วกลับมา (Next เก็บหน้าไว้ใน Activity) → ต่อใหม่แล้วดึงตัวเลขล่าสุด ไม่ค้างตัวเลขเก่า", () => {
+    const { connect, handlers } = fakeConnect();
+    const ui = (mode: "visible" | "hidden") => (
+      <Activity mode={mode}>
+        <OwnerLive connect={connect} />
+      </Activity>
+    );
+    const { rerender } = render(ui("visible"));
+    act(() => handlers.status!("live"));
+    act(() => vi.advanceTimersByTime(400));
+    refresh.mockClear();
+    rerender(ui("hidden"));
+    rerender(ui("visible"));
+    act(() => handlers.status!("live"));
+    act(() => vi.advanceTimersByTime(400));
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("เชื่อมต่อหลุด → บอกเถ้าแก่ และดึงตัวเลขใหม่ทุก 10 วินาที", () => {

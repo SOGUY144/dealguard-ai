@@ -3,6 +3,7 @@
 import { Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { formatDuration } from "@/lib/format";
+import { claimAutoPlay, voicePlayer } from "./voice-player";
 
 // ความสูงของแท่ง waveform จากไฟล์ดีไซน์ (มือถือจะถูกตัดด้วย overflow)
 const BARS = [8, 14, 22, 12, 26, 18, 10, 20, 26, 14, 22, 28, 16, 10, 20, 24, 12, 22, 18, 10, 26, 16, 22, 12, 18, 8, 14, 20, 10, 16, 8, 12, 6, 10];
@@ -19,19 +20,43 @@ type Props = {
 /**
  * แคปซูลข้อความเสียง (พื้นเข้มจุดเดียวของดีไซน์) — มี audioUrl ก็เล่นเสียงจริง
  * ถ้ายังไม่มี (mock ก่อนเฟส 6) จะจำลองการเล่นตามความยาว
+ * เล่นเอง: ใช้ตัวเล่นที่ปลดล็อกไว้ตอนกดไมค์ (iPhone) · กดเล่นเอง: ใช้ <audio> ของฟองนี้
  */
 export function VoiceBubble({ durationSec, audioUrl, autoPlay = false, simulate = true }: Props) {
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  /** กำลังเล่นผ่านตัวเล่นร่วม (ที่ปลดล็อกตอนกดไมค์) */
+  const viaShared = useRef(false);
   // เสียงไม่ได้เก็บในฐานข้อมูล — รีโหลดแล้วเหลือแค่ transcript
   const unavailable = !audioUrl && !simulate;
 
   useEffect(() => {
-    if (!autoPlay || !audioUrl) return;
-    const audio = audioRef.current;
+    if (!autoPlay || !audioUrl || !claimAutoPlay(audioUrl)) return;
+    const shared = voicePlayer();
     // browser อาจไม่ให้เล่นเอง (ยังไม่ได้แตะหน้าเว็บ) — ลูกค้ากดเล่นเองได้
-    if (audio) void tryPlay(audio).then(setPlaying);
+    const fallback = () => {
+      const audio = audioRef.current;
+      if (audio) void tryPlay(audio).then(setPlaying);
+    };
+    if (!shared) return fallback();
+    shared.src = audioUrl;
+    shared.onended = () => setPlaying(false);
+    void tryPlay(shared).then((ok) => {
+      viaShared.current = ok;
+      if (ok) setPlaying(true);
+      else fallback();
+    });
   }, [autoPlay, audioUrl]);
+
+  // ซ่อนหน้า/ออกจากแชต → หยุดเสียง (Next 16 เก็บหน้าไว้ ไม่ปิด — ไม่งั้นเสียงเล่นต่อเบื้องหลัง)
+  useEffect(() => {
+    const audio = audioRef.current;
+    return () => {
+      audio?.pause();
+      const shared = voicePlayer();
+      if (viaShared.current && shared && audioUrl && shared.src === audioUrl) shared.pause();
+    };
+  }, [audioUrl]);
 
   useEffect(() => {
     if (!playing || audioUrl) return;
@@ -41,11 +66,16 @@ export function VoiceBubble({ durationSec, audioUrl, autoPlay = false, simulate 
 
   function toggle() {
     const audio = audioRef.current;
-    if (audio) {
-      if (playing) audio.pause();
-      else void tryPlay(audio).then((ok) => !ok && setPlaying(false));
+    const shared = voicePlayer();
+    if (playing) {
+      if (viaShared.current) shared?.pause();
+      audio?.pause();
+      setPlaying(false);
+      return;
     }
-    setPlaying(!playing);
+    viaShared.current = false;
+    if (audio) void tryPlay(audio).then((ok) => !ok && setPlaying(false));
+    setPlaying(true);
   }
 
   return (
@@ -87,4 +117,3 @@ async function tryPlay(audio: HTMLAudioElement): Promise<boolean> {
     return false;
   }
 }
-

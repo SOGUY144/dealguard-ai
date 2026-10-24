@@ -48,7 +48,8 @@ export function OrderReceipt({ order, storefront }: Props) {
         </dl>
 
         <p className="text-center text-sm leading-[1.6] text-muted">
-          {storefront.ownerName}จะยืนยันวันส่งของทาง {storefront.contactChannel}
+          {/* ร้านไม่มี LINE ของลูกค้า — เถ้าแก่ตอบได้ทางแชตเท่านั้น (ดู design/HANDOFF.md กล่องเปลี่ยนแปลง) */}
+          {`${storefront.ownerName}จะยืนยันวันส่งของในแชต หรือทักร้านทาง ${storefront.contactChannel}`}
         </p>
 
         <div className="flex items-start gap-2.5 rounded-[18px] bg-warn-bg px-3.5 py-3 text-warn-ink">

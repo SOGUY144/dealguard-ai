@@ -11,7 +11,8 @@ export async function POST(request: NextRequest) {
     return new NextResponse("forbidden", { status: 403 });
   }
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut();
+  // local = ออกเฉพาะเครื่องนี้ — บัญชีเดโม/กรรมการใช้ร่วมกันหลายเครื่อง ไม่ให้คนหนึ่งกดออกแล้วคนอื่นหลุดด้วย
+  await supabase.auth.signOut({ scope: "local" });
   // 303 = ให้ browser เปลี่ยนเป็น GET ไปหน้าล็อกอิน
   return NextResponse.redirect(new URL("/login", request.url), { status: 303 });
 }

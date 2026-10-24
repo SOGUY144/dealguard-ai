@@ -43,6 +43,13 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     live ? null : scenario ? buildScenario(scenario, mockContext) : initialChatState(mockContext),
   );
   const [liveView, setLiveView] = useState(live?.initialView);
+  // server render หน้านี้ใหม่ (เช่น กลับมาหน้าแชต) → ใช้แชตที่ส่งมา · แชตเดิมเก็บข้อเสนอที่เลือกและเสียงไว้
+  const [seenInitial, setSeenInitial] = useState(live?.initialView);
+  if (live && live.initialView !== seenInitial) {
+    const next = live.initialView;
+    setSeenInitial(next);
+    setLiveView((v) => (v && v.chatId === next.chatId ? mergeServerView(v, next) : next));
+  }
   const [pending, setPending] = useState(false);
   /** ข้อความเสียงที่เพิ่งได้มา — เล่นให้เองหนึ่งครั้ง (ลูกค้าเพิ่งกดพูด) */
   const [autoPlayId, setAutoPlayId] = useState<string | null>(null);
@@ -63,6 +70,10 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     }
   }
   const inFlight = useRef(false);
+  /** ลำดับคำขอล่าสุด — ผลที่มาช้ากว่าคำขอใหม่ (โหลดเก่าที่มาหลังคำตอบ AI) ทิ้งไป ไม่ทับของใหม่ */
+  const seq = useRef(0);
+  /** มีเหตุการณ์ระหว่างรอคำตอบ (เช่น เถ้าแก่ตอบ) → ดึงใหม่หลังคำตอบมาถึง */
+  const missed = useRef(false);
   const router = useRouter();
 
   const view: ChatView = live && liveView ? liveView : mock!;
@@ -74,11 +85,21 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     [live, chatId],
   );
   const reload = live?.reload ?? fetchChatView;
-  useLiveUpdates(connect, () => {
-    // กำลังรอคำตอบของตัวเองอยู่ — คำตอบนั้นจะพาข้อความล่าสุดมาเอง
-    if (inFlight.current) return;
-    reload().then((next) => setLiveView((v) => (v ? mergeServerView(v, next) : next)), () => {});
-  });
+  function refresh() {
+    // กำลังรอคำตอบของตัวเองอยู่ — ดึงทีหลังตอนคำตอบมาถึง (เหตุการณ์อาจเกิดหลัง server สร้างคำตอบแล้ว)
+    if (inFlight.current) {
+      missed.current = true;
+      return;
+    }
+    const mine = ++seq.current;
+    reload().then(
+      (next) => {
+        if (mine === seq.current) setLiveView((v) => (v ? mergeServerView(v, next) : next));
+      },
+      () => {},
+    );
+  }
+  useLiveUpdates(connect, refresh);
 
   async function dispatch(action: ChatAction): Promise<boolean> {
     if (!live) {
@@ -91,6 +112,9 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     }
     if (inFlight.current) return false;
     inFlight.current = true;
+    missed.current = false;
+    // โหลดที่ค้างอยู่ก่อนส่ง เก่ากว่าคำตอบนี้แน่นอน
+    ++seq.current;
     setPending(true);
     // chip ก่อนส่ง — ส่งไม่สำเร็จแล้วให้กลับมา
     const chipsBefore = liveView?.suggestions ?? [];
@@ -116,6 +140,10 @@ export function useChatSession({ live, scenario, mockContext, onFocus }: Options
     } finally {
       inFlight.current = false;
       setPending(false);
+      if (missed.current) {
+        missed.current = false;
+        refresh();
+      }
     }
   }
 

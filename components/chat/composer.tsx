@@ -19,6 +19,8 @@ type Props = {
   micAvailable?: boolean;
   /** ไมค์ใช้ไม่ได้ / แปลงเสียงไม่ได้ — บอกลูกค้าให้พิมพ์แทน */
   voiceNotice?: string | null;
+  /** ข้อความที่ต้องใส่กลับในช่องพิมพ์ (เช่น เสียงที่แปลงแล้วแต่ส่งไม่สำเร็จ) — n เปลี่ยน = ใส่ใหม่ */
+  prefill?: { text: string; n: number } | null;
   /** คืน false = ส่งไม่สำเร็จ → คืนข้อความไว้ในช่องพิมพ์ */
   onSend: (text: string) => void | Promise<boolean>;
   onSuggestion: (suggestion: Suggestion) => void;
@@ -41,6 +43,7 @@ export function Composer({
   busy = false,
   micAvailable = true,
   voiceNotice = null,
+  prefill = null,
   onSend,
   onSuggestion,
   onToggleProducts,
@@ -48,6 +51,12 @@ export function Composer({
 }: Props) {
   const [text, setText] = useState("");
   const inputId = useId();
+  const [prefilled, setPrefilled] = useState(0);
+  // ใส่ข้อความกลับระหว่าง render (ไม่ใช่ใน effect) — ตามแนวทาง "ปรับ state เมื่อ prop เปลี่ยน" ของ React
+  if (prefill && prefill.n !== prefilled) {
+    setPrefilled(prefill.n);
+    setText((current) => current || prefill.text);
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -108,7 +117,8 @@ export function Composer({
           placeholder={placeholder}
           autoComplete="off"
           enterKeyHint="send"
-          className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted md:text-[15px]"
+          // มือถือ 16px — iPhone ซูมหน้าเองถ้าช่องพิมพ์เล็กกว่า 16px
+          className="h-9 w-full bg-transparent text-base outline-none placeholder:text-muted md:text-[15px]"
         />
         <div className="flex items-center gap-1 md:gap-1.5">
           <button
@@ -124,7 +134,8 @@ export function Composer({
             type="button"
             aria-label={recording ? "หยุดและส่งเสียง" : micAvailable ? "พูดด้วยเสียง" : "พูดด้วยเสียง (ยังไม่เปิดใช้)"}
             onClick={onMicPress}
-            disabled={!micAvailable || voiceState === "transcribing"}
+            // ระหว่าง AI ตอบ เริ่มอัดใหม่ไม่ได้ (เสียงที่อัดจะส่งไม่ได้ เสียค่าแปลงเสียงเปล่าๆ)
+            disabled={!micAvailable || voiceState === "transcribing" || (busy && voiceState === "idle")}
             className={cn(
               buttonClass("ghost", "size-11 p-0 md:size-10"),
               recording && "bg-accent-tint text-accent-ink ring-2 ring-accent-border motion-safe:animate-pulse",

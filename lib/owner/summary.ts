@@ -121,7 +121,8 @@ export const DEAL_RANGES = { today: "วันนี้", "7d": "7 วัน", "
 export type DealRange = keyof typeof DEAL_RANGES;
 
 export function parseDealRange(value: unknown): DealRange {
-  return typeof value === "string" && value in DEAL_RANGES ? (value as DealRange) : "all";
+  // hasOwn ไม่ใช่ in — "?range=toString" / "constructor" ต้องไม่ผ่าน (หน้าพัง)
+  return typeof value === "string" && Object.hasOwn(DEAL_RANGES, value) ? (value as DealRange) : "all";
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

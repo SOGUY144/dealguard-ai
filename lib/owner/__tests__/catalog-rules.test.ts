@@ -45,6 +45,10 @@ describe("validateNewProduct", () => {
 
 describe("validateGift", () => {
   const gift = { sku: "CASE-01", name: "เคสใส", unitCost: 8, perceivedValue: 40, qtyAvailable: 300, enabled: true };
+  it("ไม่ได้แก้สต๊อก (null) → ไม่ตรวจ", () => {
+    expect(validateGift({ ...gift, qtyAvailable: null }, [], "CASE-01")).toEqual({});
+  });
+
   it("ค่าครบ → ผ่าน · แก้ของแถมเดิม ไม่นับรหัสตัวเองว่าซ้ำ", () => {
     expect(validateGift(gift, [])).toEqual({});
     expect(validateGift(gift, ["CASE-01"], "CASE-01")).toEqual({});
@@ -146,5 +150,41 @@ describe("importTemplateCsv", () => {
     expect(csv).toBe(
       "﻿รหัสสินค้า,ชื่อสินค้า,ราคาขาย,ต้นทุน,ราคาพื้น,ลดจ่ายสด (%),เครดิต (วัน)\r\nCBL-C-1M,สายชาร์จ Type-C 1 เมตร,150,100,120,10,30\r\n",
     );
+  });
+});
+
+describe("รีวิวรอบ 3 — นำเข้าไม่ทับเงื่อนไขเดิม / ช่อง % ของ Excel", () => {
+  const existing = [{ sku: "CBL-C-1M", tiers: [], cashDiscountPct: 10, defaultCreditDays: 0 }];
+
+  it("แก้ราคาสินค้าเดิมด้วยไฟล์ที่ไม่มีคอลัมน์ลดจ่ายสด/เครดิต → ใช้ค่าเดิมของสินค้า ไม่รีเซ็ตเป็น 0% / 30 วัน", () => {
+    const result = parseImportSheet([["sku", "name", "ราคาขาย", "ต้นทุน", "ราคาพื้น"], ["CBL-C-1M", "สาย", 150, 100, 120]], existing);
+    expect(result.ok && result.rows[0].product).toMatchObject({ cashDiscountPct: 10, defaultCreditDays: 0 });
+  });
+
+  it("ช่องว่างในคอลัมน์ที่มี → ใช้ค่าเดิมเหมือนกัน · สินค้าใหม่ใช้ค่าเริ่มต้น", () => {
+    const result = parseImportSheet(
+      [
+        ["sku", "name", "ราคาขาย", "ต้นทุน", "ราคาพื้น", "ลดจ่ายสด (%)", "เครดิต (วัน)"],
+        ["CBL-C-1M", "สาย", 150, 100, 120, "", null],
+        ["NEW-1", "ใหม่", 50, 20, 30, "", ""],
+      ],
+      existing,
+    );
+    expect(result.ok && result.rows.map((r) => [r.product.cashDiscountPct, r.product.defaultCreditDays])).toEqual([
+      [10, 0],
+      [0, 30],
+    ]);
+  });
+
+  it('ช่องรูปแบบ % ใน Excel (อ่านได้ 0.05) = 5% · ข้อความ "5%" = 5%', () => {
+    const result = parseImportSheet(
+      [
+        ["sku", "name", "ราคาขาย", "ต้นทุน", "ราคาพื้น", "ลดจ่ายสด (%)"],
+        ["A-1", "ก", 100, 50, 80, 0.05],
+        ["A-2", "ข", 100, 50, 80, "5%"],
+      ],
+      [],
+    );
+    expect(result.ok && result.rows.map((r) => r.product.cashDiscountPct)).toEqual([5, 5]);
   });
 });

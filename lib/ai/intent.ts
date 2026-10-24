@@ -61,15 +61,22 @@ export async function parseIntent(
     );
     const out = llmIntentSchema.parse(raw);
     const known = ctx.products.some((p) => p.sku === out.sku);
+    // "ลด 10 บาท" / "ขอ 10%" คือส่วนลดที่ขอ ไม่ใช่ราคาต่อชิ้น — GPT ใส่มาเป็น requested_price ได้
+    const asked = out.requested_price;
+    const discountOnly =
+      asked !== null &&
+      (new RegExp(String.raw`ลด(?:ให้)?\s*${asked}(?![\d.])`).test(text) ||
+        new RegExp(String.raw`(?<![\d.])${asked}\s*(?:%|เปอร์เซ็น)`).test(text));
     return {
       source: "llm",
       intent: {
-        intent: out.intent,
+        // คืนเงิน/ร้องเรียนต้องถึงเถ้าแก่เสมอ — GPT อ่านพลาดเป็นต่อราคา กฎของเรายังจับได้
+        intent: fallback.intent === "refund" || fallback.intent === "complaint" ? fallback.intent : out.intent,
         sku: known ? out.sku : ctx.lastSku,
         // GPT ชอบเอาราคาคู่แข่งมาใส่เป็นราคาที่ขอ ("ร้านข้างๆ ให้ 110") — เท่ากันพอดีและไม่มีคำขอ = แค่อ้างราคาร้านอื่น
         // ("ร้านอื่นให้ 100 ขอ 100 ได้ไหม" ยังเป็นการขอราคา — ตัวนับต่ำกว่าพื้นต้องทำงาน)
         requestedPrice:
-          out.requested_price !== null && out.requested_price === out.competitor_price && !ASKS_FOR_PRICE.test(text)
+          discountOnly || (out.requested_price !== null && out.requested_price === out.competitor_price && !ASKS_FOR_PRICE.test(text))
             ? null
             : out.requested_price,
         quantity: out.quantity,

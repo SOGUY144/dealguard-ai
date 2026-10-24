@@ -138,13 +138,14 @@ export function ImportDialog({ existing, giftSkus, current, importCatalog, onImp
 
       {rows && (
         <div className="overflow-x-auto rounded-2xl bg-white/70">
-          <table className="w-full min-w-[560px] text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <caption className="sr-only">สินค้าในไฟล์</caption>
             <thead className="text-xs text-muted">
               <tr>
                 <th className="px-3 py-2 font-medium">แถว</th>
                 <th className="px-3 py-2 font-medium">สินค้า</th>
                 <th className="px-3 py-2 font-medium">ขาย / ทุน / พื้น</th>
+                <th className="px-3 py-2 font-medium">จ่ายสด / เครดิต</th>
                 <th className="px-3 py-2 font-medium">ผล</th>
               </tr>
             </thead>
@@ -162,6 +163,10 @@ export function ImportDialog({ existing, giftSkus, current, importCatalog, onImp
                       {[r.product.listPrice, r.product.unitCost, r.product.floorPrice]
                         .map((n) => (Number.isFinite(n) ? formatBaht(n) : "—"))
                         .join(" / ")}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {Number.isFinite(r.product.cashDiscountPct) ? `${r.product.cashDiscountPct}%` : "—"} /{" "}
+                      {Number.isFinite(r.product.defaultCreditDays) ? `${r.product.defaultCreditDays} วัน` : "—"}
                     </td>
                     <td className="px-3 py-2">
                       {errs.length > 0 ? (

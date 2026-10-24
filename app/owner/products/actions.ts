@@ -44,7 +44,7 @@ const giftSchema = z.object({
   name: z.string().max(200),
   unitCost: z.number(),
   perceivedValue: z.number(),
-  qtyAvailable: z.number(),
+  qtyAvailable: z.number().nullable(),
   enabled: z.boolean(),
 });
 const kind = z.enum(["product", "gift"]);

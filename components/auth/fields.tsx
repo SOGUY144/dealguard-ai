@@ -22,7 +22,7 @@ export function TextField({ label, error, hint, className, ...input }: FieldProp
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          "h-12 rounded-input border bg-white px-4 text-[15px] outline-none transition-colors",
+          "h-12 rounded-input border bg-white px-4 text-base outline-none transition-colors md:text-[15px]",
           "focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-border",
           error ? "border-warn" : "border-line",
         )}

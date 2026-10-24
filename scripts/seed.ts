@@ -1,6 +1,8 @@
 // ใส่ข้อมูลร้าน/สินค้าจาก lib/config/merchant.json และสร้างบัญชีกรรมการ + เดโม (ยืนยันอีเมลแล้ว)
 // รัน: npm run db:seed   (ต้องรัน npm run db:migrate ก่อน)
 // รหัสผ่านสุ่มแล้วเก็บใน .demo-accounts.local.json / .md (git ไม่เก็บ) — รันซ้ำจะใช้รหัสเดิม ไม่เปลี่ยนรหัสที่แจกไปแล้ว
+// บัญชีที่มีอยู่แล้วไม่ถูกเปลี่ยนรหัส (ฐานข้อมูลเดียวกับเว็บจริง — กันเพื่อนในทีมรันจาก clone ใหม่แล้วรหัสที่แจกกรรมการใช้ไม่ได้)
+// อยากตั้งรหัสใหม่จากไฟล์จริงๆ: npm run db:seed -- --reset-passwords
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
@@ -22,13 +24,22 @@ function env(name: string): string {
   return value;
 }
 
+/** ไม่มีไฟล์ = ยังไม่เคย seed · มีไฟล์แต่อ่านไม่ได้ = หยุด (ไม่สุ่มรหัสใหม่ทับเงียบๆ) */
 async function readSavedPasswords(): Promise<Record<string, string>> {
+  let raw: string;
   try {
-    return JSON.parse(await readFile(JSON_FILE, "utf8"));
+    raw = await readFile(JSON_FILE, "utf8");
   } catch {
     return {};
   }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`${JSON_FILE} อ่านไม่ได้ (JSON เสีย) — แก้ไฟล์ก่อน seed จะได้ไม่เปลี่ยนรหัสที่แจกไปแล้ว`);
+  }
 }
+
+const RESET_PASSWORDS = process.argv.includes("--reset-passwords");
 
 async function main() {
   const db = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
@@ -101,9 +112,18 @@ async function main() {
     const metadata = { display_name: account.displayName, privacy_accepted: true };
     const found = users.find((u) => u.email === account.email);
 
+    // บัญชีเดิม: ไม่แตะรหัส (เว้นแต่สั่ง --reset-passwords) · บัญชีใหม่: ใช้รหัสจากไฟล์หรือสุ่มใหม่
     const result = found
-      ? await db.auth.admin.updateUserById(found.id, { password, email_confirm: true, user_metadata: metadata })
+      ? await db.auth.admin.updateUserById(found.id, {
+          ...(RESET_PASSWORDS && { password }),
+          email_confirm: true,
+          user_metadata: metadata,
+        })
       : await db.auth.admin.createUser({ email: account.email, password, email_confirm: true, user_metadata: metadata });
+    if (found && !RESET_PASSWORDS && !saved[account.email]) {
+      // รหัสจริงอยู่ที่ใครสักคน — อย่าเขียนรหัสสุ่มลงไฟล์ · ไม่ใส่ใน JSON เลย (seed รอบหน้าจะอ่านเป็นรหัสจริง)
+      delete passwords[account.email];
+    }
     if (result.error) throw new Error(`${found ? "อัปเดต" : "สร้าง"} ${account.email}: ${result.error.message}`);
     const userId = result.data.user.id;
 
@@ -116,7 +136,11 @@ async function main() {
   }
 
   await writeFile(JSON_FILE, JSON.stringify(passwords, null, 2) + "\n");
-  const rows = ACCOUNTS.map((a) => `| ${a.note} | ${a.role} | ${a.email} | \`${passwords[a.email]}\` |`);
+  const rows = ACCOUNTS.map((a) =>
+    a.email in passwords
+      ? `| ${a.note} | ${a.role} | ${a.email} | \`${passwords[a.email]}\` |`
+      : `| ${a.note} | ${a.role} | ${a.email} | (ไม่รู้ — ถามคนที่ seed ครั้งแรก หรือรัน --reset-passwords) |`,
+  );
   await writeFile(
     MD_FILE,
     [

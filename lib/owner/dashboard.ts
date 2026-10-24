@@ -32,7 +32,7 @@ const PREVIEW_MESSAGES = 4;
 export type OwnerData = {
   deals: OwnerDeal[];
   escalations: OwnerEscalation[];
-  /** จำนวนเรื่องรอตัดสินของวันนี้ตามจริง (รายการอาจตัดไว้ที่ ESCALATION_LIST_LIMIT) */
+  /** จำนวนเรื่องรอตัดสินตามจริง ทุกวัน (รายการอาจตัดไว้ที่ ESCALATION_LIST_LIMIT) */
   openCount: number;
   /** ออเดอร์ที่อ่าน margin ไม่ได้ (ข้อมูลไม่ครบ) — ควรเป็น 0 เสมอ */
   incompleteDeals: number;
@@ -42,12 +42,15 @@ export type OwnerData = {
 
 export async function readOwnerData(db: SupabaseClient, now = new Date()): Promise<OwnerData> {
   const since = bangkokDayStart(now).toISOString();
-  // เรื่องที่ยังไม่ปิดของวันนี้ — ของวันก่อนไม่ค้างกองบนหน้า (ปิดเรื่องได้ในหน้าแชตเถ้าแก่ เฟส 8)
-  const openToday = () =>
-    db.from("escalations").select("id, chat_id, kind, brief, created_at", { count: "exact" }).eq("status", "open").gte("created_at", since);
+  // เรื่องที่ยังไม่ปิด ทุกวัน (รีวิวรอบ 3): เรื่องคืนเงินตอน 23:40 ต้องยังเตือนเช้าวันถัดไป จนกว่าเถ้าแก่จะปิดเรื่อง
   const [{ deals, incompleteDeals }, escalations] = await Promise.all([
     readDeals(db, since),
-    openToday().order("created_at", { ascending: false }).limit(ESCALATION_LIST_LIMIT),
+    db
+      .from("escalations")
+      .select("id, chat_id, kind, brief, created_at", { count: "exact" })
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(ESCALATION_LIST_LIMIT),
   ]);
   if (escalations.error) throw new Error(`[owner] อ่านเรื่องที่ส่งต่อ: ${escalations.error.message}`);
 
@@ -77,8 +80,10 @@ export async function readDeals(
     .select("id, chat_id, created_at, product_name, profiles!inner(display_name, role), offers(*, offer_economics(*))")
     .eq("profiles.role", "buyer");
   if (since) query = query.gte("created_at", since);
-  const orders = await query.order("created_at").limit(DEAL_HISTORY_LIMIT);
+  // ล่าสุดก่อนแล้วกลับลำดับ — เกินเพดานแล้วตัดของเก่าทิ้ง ไม่ใช่ตัดของใหม่
+  const orders = await query.order("created_at", { ascending: false }).limit(DEAL_HISTORY_LIMIT);
   if (orders.error) throw new Error(`[owner] อ่านออเดอร์: ${orders.error.message}`);
+  orders.data.reverse();
 
   const deals: OwnerDeal[] = [];
   let incompleteDeals = 0;
@@ -126,13 +131,13 @@ export async function readEscalationHistory(db: SupabaseClient, status: "open" |
   }));
 }
 
-/** จำนวนเรื่องรอตัดสินของวันนี้ — badge ในเมนูของหน้าอื่นที่ไม่ใช่ภาพรวม */
-export async function countOpenEscalations(db: SupabaseClient, now = new Date()): Promise<number> {
+/** จำนวนเรื่องรอตัดสินทั้งหมด (ทุกวัน) — badge ในเมนู · now ไม่ได้ใช้แล้ว เก็บไว้ให้เรียกแบบเดิมได้ */
+export async function countOpenEscalations(db: SupabaseClient, _now = new Date()): Promise<number> {
+  void _now;
   const { count, error } = await db
     .from("escalations")
     .select("id", { count: "exact", head: true })
-    .eq("status", "open")
-    .gte("created_at", bangkokDayStart(now).toISOString());
+    .eq("status", "open");
   if (error) throw new Error(`[owner] นับเรื่องที่ส่งต่อ: ${error.message}`);
   return count ?? 0;
 }

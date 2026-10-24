@@ -34,7 +34,8 @@ describe("OrderReceipt (Mobile-Order)", () => {
     expect(screen.getByText("1,500 × ฿130")).toBeInTheDocument();
     expect(screen.getByText("เครดิต 30 วัน")).toBeInTheDocument();
     expect(screen.getByText("฿195,000")).toBeInTheDocument();
-    expect(screen.getByText("เฮียชัยจะยืนยันวันส่งของทาง [ช่องทางติดต่อของร้าน]")).toBeInTheDocument();
+    // ร้านไม่มี LINE ของลูกค้า — เถ้าแก่ยืนยันได้ทางแชตเท่านั้น ลูกค้าทักร้านเองได้
+    expect(screen.getByText("เฮียชัยจะยืนยันวันส่งของในแชต หรือทักร้านทาง [ช่องทางติดต่อของร้าน]")).toBeInTheDocument();
     expect(screen.getByText(/รับโอนเข้าบัญชี \[ชื่อบัญชีร้าน\] เท่านั้น/)).toBeInTheDocument();
   });
 

@@ -106,3 +106,17 @@ describe("parseIntent (Layer 1)", () => {
     expect(result.source).toBe("fallback");
   });
 });
+
+describe("รีวิวรอบ 3 — กฎของเรากันไว้อีกชั้น", () => {
+  it("GPT อ่านขอคืนเงินเป็นต่อราคา → ยังส่งเรื่องคืนเงิน (กฎของเราจับได้)", async () => {
+    const llm = fakeLlm(async () => llmOutput({ intent: "negotiate_price", requested_price: 120, competitor_price: null }));
+    const { intent } = await parseIntent("ขอคืนเงิน แต่ขอราคา 120 ด้วย", ctx, llm);
+    expect(intent.intent).toBe("refund");
+  });
+
+  it('GPT ใส่ "ลด 10 บาท" / "ขอ 10%" เป็นราคาที่ขอ → ไม่ใช่ราคาต่อชิ้น', async () => {
+    const llm = fakeLlm(async () => llmOutput({ requested_price: 10, competitor_price: null }));
+    expect((await parseIntent("ลด 10 บาทได้ไหม 1000 ชิ้น", ctx, llm)).intent.requestedPrice).toBeNull();
+    expect((await parseIntent("ขอ 10% ได้ไหม 1000 ชิ้น", ctx, llm)).intent.requestedPrice).toBeNull();
+  });
+});

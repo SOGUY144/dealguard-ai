@@ -3,6 +3,7 @@ import "server-only";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { conditionsMeetingAsk } from "@/lib/chat/replies";
 import { formatQty } from "@/lib/format";
 import { llmIntentSchema, type IntentLlm, type IntentLlmInput } from "./intent";
 import type { ReplyWriter } from "./responder";
@@ -54,7 +55,7 @@ JSON ที่ได้เป็นข้อมูลจากระบบคิ
 - intro: พูดตาม intro_points ครบทุกข้อ ตามลำดับ ใช้สำนวนของคุณเองได้ แต่ห้ามเพิ่มเรื่องอื่น ห้ามพูดราคาของข้อเสนอ เรียกเจ้าของร้านว่า owner_name
 - options: ข้อเสนอละ 1 วลี 3–8 คำ ตามลำดับ id ใช้เฉพาะตัวเลขของข้อนั้น บอกจุดเด่นของข้อ (ซื้อเยอะ / จ่ายสด / ของแถม) กับราคาต่อชิ้น ไม่ต้องเขียน "ข้อ A" ระบบใส่ให้
 - closing: คำถามสั้นๆ ชวนเลือก ไม่มีตัวเลข
-กฎ: ตัวเลขเป็นเลขอารบิก ราคาใช้ ฿ · ห้ามคิด ปัด หรือเปลี่ยนตัวเลขเอง · ห้ามสัญญาเรื่องที่ไม่มีในข้อเสนอ (ส่งฟรี รับประกัน คืนเงิน) · ห้ามบอกว่าแจ้งหรือส่งเรื่องให้ใคร · ห้ามพูดถึงต้นทุนหรือกำไร · ไม่ใช้อีโมจิ · ไม่ใช้คำว่า "ท่าน" · รวมไม่เกิน 40 คำ
+กฎ: ตัวเลขเป็นเลขอารบิก ราคาเขียน ฿ ติดหน้าตัวเลขเสมอ (฿130) จำนวนตามด้วย "ชิ้น" · ห้ามคิด ปัด หรือเปลี่ยนตัวเลขเอง · ห้ามสัญญาเรื่องที่ไม่มีในข้อเสนอ และห้ามใช้คำว่า ฟรี ส่ง ประกัน คืน เปลี่ยน · ห้ามบอกว่าแจ้งหรือส่งเรื่องให้ใคร · ห้ามพูดถึงต้นทุนหรือกำไร · ห้ามบอกว่าลดได้อีก · ไม่ใช้อีโมจิ · ไม่ใช้คำว่า "ท่าน" · ของแถมใช้คำว่า "แถม" · รวมไม่เกิน 40 คำ
 ตัวอย่างรูปแบบ (ตัวเลขต้องมาจาก JSON จริงเท่านั้น):
 {"intro":"คุณนกครับ ราคา 125 ที่ 1,000 ชิ้นเฮียชัยให้ไม่ไหว แต่มี 3 ทางให้เลือกครับ","options":[{"id":"A","text":"ซื้อ 1,500 ชิ้น ได้ ฿130"},{"id":"B","text":"จ่ายสด ได้ ฿135"},{"id":"C","text":"฿145 แถมหัวชาร์จ 20W 200 ชิ้น"}],"closing":"สนใจทางไหนครับ"}`;
 
@@ -69,7 +70,15 @@ function introPoints(f: ReplyFacts): string[] {
   const points = [`เรียกลูกค้าว่า ${f.buyerName}`];
   if (f.requestedPrice !== null) {
     const asked = formatQty(Math.ceil(f.requestedPrice));
-    points.push(f.qty !== null ? `ราคา ${asked} ที่ ${formatQty(f.qty)} ชิ้น ${f.ownerName}ให้ไม่ไหว` : `ราคา ${asked} ${f.ownerName}ให้ไม่ไหว`);
+    // มีข้อที่ได้ราคาเท่าที่ขอ → บอกว่าได้ถ้าเลือกทางนั้น ไม่ใช่ "ให้ไม่ไหว"
+    const meets = conditionsMeetingAsk(f.offers, f.requestedPrice);
+    points.push(
+      meets
+        ? `ราคา ${asked} ได้ ถ้า${meets}`
+        : f.qty !== null
+          ? `ราคา ${asked} ที่ ${formatQty(f.qty)} ชิ้น ${f.ownerName}ให้ไม่ไหว`
+          : `ราคา ${asked} ${f.ownerName}ให้ไม่ไหว`,
+    );
   }
   if (f.competitorPrice !== null) points.push(`ร้านอื่นให้ ${formatQty(f.competitorPrice)} ${f.ownerName}ลดตามไม่ได้`);
   points.push(`มี ${f.offers.length} ทางให้เลือก`);

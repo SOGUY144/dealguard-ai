@@ -14,8 +14,8 @@ export const productSettingsSchema = z.object({
   cashDiscountPct: z.number(),
   defaultCreditDays: z.number(),
   aiEnabled: z.boolean(),
-  costOfCapitalPct: z.number(),
-  escalationDealValue: z.number(),
+  costOfCapitalPct: z.number().nullable(),
+  escalationDealValue: z.number().nullable(),
   gifts: z.array(z.object({ sku: z.string().min(1).max(64), enabled: z.boolean() })).max(50),
 });
 
@@ -30,10 +30,10 @@ export type ProductSettingsForm = {
   cashDiscountPct: number;
   defaultCreditDays: number;
   aiEnabled: boolean;
-  /** % ต่อปี (12 = 12%) */
-  costOfCapitalPct: number;
-  escalationDealValue: number;
-  /** ของค้างสต๊อกที่ใช้เป็นของแถมได้ */
+  /** % ต่อปี (12 = 12%) — ค่าระดับร้าน: null = ไม่ได้แก้ (ฐานข้อมูลใช้ค่าเดิม ไม่เขียนทับจากหน้าจอเก่า) */
+  costOfCapitalPct: number | null;
+  escalationDealValue: number | null;
+  /** ของค้างสต๊อกที่ใช้เป็นของแถมได้ (ระดับร้าน) — ตอนบันทึกส่งเฉพาะตัวที่กดเปลี่ยน */
   gifts: { sku: string; enabled: boolean }[];
 };
 
@@ -47,7 +47,13 @@ export type GiftInfo = {
   enabled: boolean;
   imageUrl?: string;
 };
-export type ProductSettingsPage = { products: (ProductSettingsForm & { imageUrl?: string })[]; gifts: GiftInfo[] };
+/** ค่าที่อ่านจากฐานข้อมูล (ค่าระดับร้านมีค่าเสมอ) */
+export type SavedProductSettings = Omit<ProductSettingsForm, "costOfCapitalPct" | "escalationDealValue"> & {
+  costOfCapitalPct: number;
+  escalationDealValue: number;
+  imageUrl?: string;
+};
+export type ProductSettingsPage = { products: SavedProductSettings[]; gifts: GiftInfo[] };
 
 /** key = ชื่อช่อง เช่น "floorPrice" หรือ "tiers.2.price" · ว่าง = ผ่าน */
 export type FieldErrors = Record<string, string>;
@@ -97,9 +103,10 @@ export function validateSettings(f: ProductSettingsForm): FieldErrors {
   if (!isNum(f.cashDiscountPct) || f.cashDiscountPct < 0 || f.cashDiscountPct > 50) errors.cashDiscountPct = "ใส่ 0–50%";
   if (!isInt(f.defaultCreditDays) || f.defaultCreditDays < 0 || f.defaultCreditDays > 365)
     errors.defaultCreditDays = "ใส่ 0–365 วัน";
-  if (!isNum(f.costOfCapitalPct) || f.costOfCapitalPct < 0 || f.costOfCapitalPct > 100)
+  if (f.costOfCapitalPct !== null && (!isNum(f.costOfCapitalPct) || f.costOfCapitalPct < 0 || f.costOfCapitalPct > 100))
     errors.costOfCapitalPct = "ใส่ 0–100% ต่อปี";
-  if (!isNum(f.escalationDealValue) || f.escalationDealValue <= 0) errors.escalationDealValue = "ใส่มูลค่ามากกว่า 0";
+  if (f.escalationDealValue !== null && (!isNum(f.escalationDealValue) || f.escalationDealValue <= 0))
+    errors.escalationDealValue = "ใส่มูลค่ามากกว่า 0";
 
   return errors;
 }
@@ -116,7 +123,7 @@ export function toSaveArgs(f: ProductSettingsForm) {
     p_cash_discount_pct: f.cashDiscountPct / 100,
     p_default_credit_days: f.defaultCreditDays,
     p_ai_enabled: f.aiEnabled,
-    p_cost_of_capital_annual: f.costOfCapitalPct / 100,
+    p_cost_of_capital_annual: f.costOfCapitalPct === null ? null : f.costOfCapitalPct / 100,
     p_escalation_deal_value: f.escalationDealValue,
     p_gifts: f.gifts.map(({ sku, enabled }) => ({ sku, enabled })),
   };

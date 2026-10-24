@@ -41,7 +41,7 @@ function SearchField({ value, onChange, className }: { value: string; onChange: 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="ค้นหาสินค้า"
-        className="h-10 min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
+        className="h-10 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted"
       />
     </div>
   );

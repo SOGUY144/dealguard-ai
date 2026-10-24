@@ -129,3 +129,38 @@ describe("fallbackIntent", () => {
   });
 });
 
+
+describe("รีวิวรอบ 3 — ตัวแยกสำรองอ่านผิด", () => {
+  const ctx = { products: [{ sku: "CBL-C-1M", name: "สายชาร์จ Type-C 1 เมตร", listPrice: 150 }], lastSku: "CBL-C-1M" };
+  const parse = (t: string) => fallbackIntent(t, ctx);
+
+  it('"ถ้าสั่ง 1000 ชิ้น ลดได้ไหม" = ต่อราคา ไม่ใช่สั่งซื้อราคาเต็ม', () => {
+    expect(parse("ถ้าสั่ง 1000 ชิ้น ลดได้ไหม")).toMatchObject({ intent: "negotiate_price", quantity: 1000, requestedPrice: null });
+  });
+
+  it('"ขอ 10%" ไม่ใช่ราคา 10 บาท', () => {
+    expect(parse("ขอ 10% ได้ไหม 1000 ชิ้น")).toMatchObject({ intent: "negotiate_price", requestedPrice: null, quantity: 1000 });
+  });
+
+  it('"ขอลดเป็น 130" / "เหลือ 130" = ขอราคา 130', () => {
+    expect(parse("ขอลดเป็น 130 ได้ไหม 1000 ชิ้น").requestedPrice).toBe(130);
+    expect(parse("เหลือ 130 ได้ไหม 1000 ชิ้น").requestedPrice).toBe(130);
+  });
+
+  it('ต่อราคา + ถามวันส่ง ยังเป็นการต่อราคา (ไม่ทิ้งข้อเสนอ)', () => {
+    expect(parse("ขอ 125 ได้ไหม 1000 ชิ้น ส่งกี่วัน")).toMatchObject({ intent: "negotiate_price", requestedPrice: 125 });
+  });
+
+  it('"ร้านอื่นให้ 110 ขอ 110 ได้ไหม" = ขอราคา 110 (ตรงกับ GPT path)', () => {
+    expect(parse("ร้านอื่นให้ 110 ขอ 110 ได้ไหม 1000 ชิ้น").requestedPrice).toBe(110);
+  });
+
+  it('"ขอบคุณ" ไม่ใช่การขอราคา', () => {
+    expect(parse("ร้านข้างๆ ให้ 110 ขอบคุณครับ").requestedPrice).toBeNull();
+  });
+
+  it('ถามว่าใช้กับเครื่องได้ไหม ไม่ใช่ร้องเรียน (AI จะหยุดตอบทั้งแชต)', () => {
+    expect(parse("ใช้ไม่ได้กับ iPhone ใช่ไหม").intent).not.toBe("complaint");
+    expect(parse("สายชาร์จใช้ไม่ได้ครับ เสีย 20 เส้น").intent).toBe("complaint");
+  });
+});

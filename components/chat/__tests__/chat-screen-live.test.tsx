@@ -205,9 +205,10 @@ describe("ChatScreen — แชตจริง (ผ่าน API)", () => {
       messages: [...human.messages, { id: "o1", at, type: "owner_text", text: "ส่งรูปของที่เสียมาได้เลยครับ" }],
     };
     const reload = vi.fn(async () => withOwner);
-    renderLive(human, vi.fn(), { connect, reload });
+    // ต่อติดก็ดึงหนึ่งครั้งอยู่แล้ว — ใช้นาฬิกาปลอมตั้งแต่ก่อนเปิดหน้า ให้รวมเป็นการดึงครั้งเดียว
     vi.useFakeTimers();
     try {
+      renderLive(human, vi.fn(), { connect, reload });
       act(() => fire());
       await act(async () => {
         vi.advanceTimersByTime(400);
@@ -220,10 +221,85 @@ describe("ChatScreen — แชตจริง (ผ่าน API)", () => {
     expect(within(thread()).getByText("ส่งรูปของที่เสียมาได้เลยครับ")).toBeInTheDocument();
   });
 
+  describe("โหลดแชตใหม่ชนกับการส่ง (รีวิวรอบ 3)", () => {
+    function liveConnect() {
+      let fire: () => void = () => {};
+      const connect: ConnectLive = (onChange) => {
+        fire = onChange;
+        return () => {};
+      };
+      return { connect, fire: () => fire() };
+    }
+    /** มีเหตุการณ์ Realtime แล้วรอให้ debounce ครบ */
+    async function event(fire: () => void) {
+      act(() => fire());
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+    }
+
+    it("โหลดที่เริ่มก่อนส่ง แต่มาถึงหลังคำตอบ AI → ไม่ทับคำตอบใหม่ด้วยแชตเก่า", async () => {
+      vi.useFakeTimers();
+      try {
+        const live = liveConnect();
+        const slow = deferred<ChatView>();
+        const reload = vi.fn(() => slow.promise);
+        renderLive(initialView, vi.fn(async () => withOffers), { connect: live.connect, reload });
+        await event(live.fire);
+        expect(reload).toHaveBeenCalledTimes(1);
+        typeAndSend("ขอ 125 ได้ไหม 1000 ชิ้น");
+        await act(async () => {});
+        await act(async () => slow.resolve(initialView));
+        expect(within(thread()).getByRole("group", { name: "3 ทางเลือกจากเฮียชัย" })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("เถ้าแก่ตอบระหว่างรอคำตอบ AI → ดึงแชตใหม่หลังคำตอบมาถึง ข้อความเถ้าแก่ไม่หาย", async () => {
+      vi.useFakeTimers();
+      try {
+        const live = liveConnect();
+        const reply = deferred<ChatView>();
+        const withOwner: ChatView = {
+          ...withOffers,
+          messages: [...withOffers.messages, { id: "own1", at, type: "owner_text", text: "เดี๋ยวเฮียดูให้ครับ" }],
+        };
+        const reload = vi.fn(async () => withOwner);
+        renderLive(initialView, vi.fn(() => reply.promise), { connect: live.connect, reload });
+        typeAndSend("ขอ 125 ได้ไหม 1000 ชิ้น");
+        await event(live.fire);
+        expect(reload).not.toHaveBeenCalled();
+        await act(async () => reply.resolve(withOffers));
+        await act(async () => {
+          vi.advanceTimersByTime(400);
+        });
+        expect(reload).toHaveBeenCalledTimes(1);
+        expect(within(thread()).getByText("เดี๋ยวเฮียดูให้ครับ")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("server ส่งแชตใหม่มาให้หน้าเดิม (กลับมาหน้าแชตแล้ว Next render ใหม่) → ใช้แชตล่าสุด ไม่ค้างของเก่า", () => {
+    const transport = vi.fn();
+    const ui = (view: ChatView) => (
+      <ChatScreen storefront={storefront} products={products} buyerName="คุณนก" live={{ initialView: view, transport, connect: null }} />
+    );
+    const { rerender } = render(ui(initialView));
+    rerender(ui(withOffers));
+    expect(within(thread()).getByRole("group", { name: "3 ทางเลือกจากเฮียชัย" })).toBeInTheDocument();
+  });
+
   describe("ไมค์ (เฟส 6)", () => {
     function fakeVoice(over: Partial<LiveVoice> = {}): LiveVoice {
       return {
-        recorder: () => ({ start: vi.fn(async () => {}), stop: vi.fn(async () => new Blob(["x"], { type: "audio/webm" })) }),
+        recorder: () => ({
+          start: vi.fn(async () => {}),
+          stop: vi.fn(async () => new Blob(["x"], { type: "audio/webm" })),
+          cancel: vi.fn(),
+        }),
         transcribe: vi.fn(async () => "ขอ 125 ได้ไหม 1,000 ชิ้น"),
         ...over,
       };
@@ -243,7 +319,11 @@ describe("ChatScreen — แชตจริง (ผ่าน API)", () => {
     it("ไม่อนุญาตไมค์ → บอกให้พิมพ์แทน ไม่ส่งอะไร", async () => {
       const transport = vi.fn();
       const voice = fakeVoice({
-        recorder: () => ({ start: vi.fn(async () => Promise.reject(new DOMException("denied", "NotAllowedError"))), stop: vi.fn() }),
+        recorder: () => ({
+          start: vi.fn(async () => Promise.reject(new DOMException("denied", "NotAllowedError"))),
+          stop: vi.fn(),
+          cancel: vi.fn(),
+        }),
       });
       renderLive(initialView, transport, { voice }, true);
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "พูดด้วยเสียง" })));
@@ -276,6 +356,57 @@ describe("ChatScreen — แชตจริง (ผ่าน API)", () => {
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "หยุดและส่งเสียง" })));
       expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
       expect(document.querySelector("audio")?.getAttribute("src")).toBe("blob:voice-1");
+    });
+
+    it("ออกจากหน้าแชตตอนกำลังอัด → ปิดไมค์ทันที ไม่ส่งเสียงที่อัดไว้", async () => {
+      const cancel = vi.fn();
+      const transport = vi.fn();
+      const voice = fakeVoice({ recorder: () => ({ start: vi.fn(async () => {}), stop: vi.fn(), cancel }) });
+      const { unmount } = renderLive(initialView, transport, { voice }, true);
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "พูดด้วยเสียง" })));
+      unmount();
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("กดไมค์สองครั้งตอนเบราว์เซอร์ถามสิทธิ์ → อัดตัวเดียว (ไม่มีไมค์ค้าง)", async () => {
+      let allow: () => void = () => {};
+      const made: number[] = [];
+      const voice = fakeVoice({
+        recorder: () => {
+          made.push(made.length);
+          return { start: vi.fn(() => new Promise<void>((r) => (allow = r))), stop: vi.fn(async () => new Blob(["x"])), cancel: vi.fn() };
+        },
+      });
+      renderLive(initialView, vi.fn(), { voice }, true);
+      const mic = screen.getByRole("button", { name: "พูดด้วยเสียง" });
+      fireEvent.click(mic);
+      fireEvent.click(mic);
+      await act(async () => allow());
+      expect(made).toHaveLength(1);
+    });
+
+    it("ออกจากหน้าตอนเบราว์เซอร์ยังถามสิทธิ์ไมค์ → อนุญาตทีหลังก็ไม่เริ่มอัดบนหน้าที่ซ่อนอยู่", async () => {
+      let allow: () => void = () => {};
+      const cancel = vi.fn();
+      const voice = fakeVoice({
+        recorder: () => ({ start: vi.fn(() => new Promise<void>((r) => (allow = r))), stop: vi.fn(), cancel }),
+      });
+      const { unmount } = renderLive(initialView, vi.fn(), { voice }, true);
+      fireEvent.click(screen.getByRole("button", { name: "พูดด้วยเสียง" }));
+      unmount();
+      await act(async () => allow());
+      expect(cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("ส่งเสียงไม่สำเร็จ → ข้อความที่พูดกลับมาอยู่ในช่องพิมพ์ ไม่หายเงียบ", async () => {
+      const transport = vi.fn(async () => {
+        throw new Error("503");
+      });
+      renderLive(initialView, transport, { voice: fakeVoice() }, true);
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "พูดด้วยเสียง" })));
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "หยุดและส่งเสียง" })));
+      expect(screen.getByRole("textbox", { name: /พิมพ์/ })).toHaveValue("ขอ 125 ได้ไหม 1,000 ชิ้น");
     });
 
     it("ไม่มีคีย์แปลงเสียง → ไมค์กดไม่ได้", () => {

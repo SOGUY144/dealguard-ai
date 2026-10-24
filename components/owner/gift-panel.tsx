@@ -2,7 +2,7 @@
 
 // ตั้งค่าของแถม (ของค้างสต๊อกที่ AI ใช้เป็นข้อ C) — ไม่มีในไฟล์ดีไซน์ ทำให้เข้าชุดกับหน้าสินค้า
 import { Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buttonClass } from "@/components/ui/button";
 import { validateGift, type GiftForm, type ImageResult } from "@/lib/owner/catalog-rules";
 import type { FieldErrors, GiftInfo, SaveResult } from "@/lib/owner/product-settings";
@@ -30,11 +30,14 @@ type Props = {
   actions: GiftActions;
   onSaved: () => void;
   onDelete: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   shrink?: (file: File) => Promise<Blob>;
 };
 
-export function GiftPanel({ gift, actions, onSaved, onDelete, shrink }: Props) {
+export function GiftPanel({ gift, actions, onSaved, onDelete, onDirtyChange, shrink }: Props) {
   const [draft, setDraft] = useState(() => toDraft(gift));
+  // สต๊อกตอนเริ่มแก้ — เทียบกับค่านี้ (ไม่ใช่ค่าล่าสุดหลังรีเฟรช) ว่าเถ้าแก่แก้ช่องสต๊อกเองไหม
+  const [baseQty, setBaseQty] = useState(() => String(gift.qtyAvailable));
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -44,12 +47,16 @@ export function GiftPanel({ gift, actions, onSaved, onDelete, shrink }: Props) {
       name: draft.name,
       unitCost: toNum(draft.unitCost),
       perceivedValue: toNum(draft.perceivedValue),
-      qtyAvailable: toNum(draft.qtyAvailable),
+      // ไม่ได้แตะช่องสต๊อก → ไม่ส่ง (ตัวเลขในหน้าจออาจเก่ากว่าสต๊อกจริงที่ออเดอร์หักไปแล้ว)
+      qtyAvailable: draft.qtyAvailable === baseQty ? null : toNum(draft.qtyAvailable),
       enabled: draft.enabled,
     }),
-    [draft, gift.sku],
+    [draft, gift.sku, baseQty],
   );
   const errors = { ...serverErrors, ...validateGift(form, [], gift.sku) };
+  const [baseline, setBaseline] = useState(() => JSON.stringify(draft));
+  const dirty = JSON.stringify(draft) !== baseline;
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const edit = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setServerErrors({});
@@ -66,6 +73,8 @@ export function GiftPanel({ gift, actions, onSaved, onDelete, shrink }: Props) {
       const result = await actions.saveGift(form, gift.sku);
       if (result.ok) {
         setStatus({ kind: "saved", message: "บันทึกแล้ว ข้อเสนอถัดไปใช้ค่านี้" });
+        setBaseQty(draft.qtyAvailable);
+        setBaseline(JSON.stringify(draft));
         onSaved();
         return;
       }
@@ -128,7 +137,14 @@ export function GiftPanel({ gift, actions, onSaved, onDelete, shrink }: Props) {
           ลบของแถมนี้
         </button>
         <span className="flex-[1_1_160px]" />
-        <button type="button" onClick={() => edit(toDraft(gift))} disabled={status.kind === "saving"} className={buttonClass("secondary", "h-12 px-5 font-medium")}>
+        <button
+          type="button"
+          onClick={() => {
+            edit(toDraft(gift));
+            setBaseQty(String(gift.qtyAvailable));
+            setBaseline(JSON.stringify(toDraft(gift)));
+          }}
+          disabled={status.kind === "saving"} className={buttonClass("secondary", "h-12 px-5 font-medium")}>
           ยกเลิก
         </button>
         <button

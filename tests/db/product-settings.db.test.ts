@@ -1,5 +1,6 @@
 // หน้าตั้งค่าสินค้า (เฟส 9) บน Supabase จริง: บันทึกแล้วข้อเสนอถัดไปเปลี่ยนตาม, ราคาต่ำกว่าพื้นโดนปฏิเสธ, สิทธิ์
-// รัน: npm run test:db — แก้ราคาสินค้าจริงชั่วคราว แล้วคืนค่าจาก lib/config/merchant.json ตอนจบเสมอ
+// รัน: npm run test:db — แก้ราคาสินค้าจริงชั่วคราว (ฐานข้อมูลเดียวกับเว็บจริง อย่ารันระหว่างเดโม/มีลูกค้าใช้)
+// ก่อนเริ่มจำค่าที่อยู่ในฐานข้อมูลจริงไว้ แล้วคืนค่านั้นตอนจบ (ไม่ใช่ค่าจาก merchant.json — ไม่ทับที่เถ้าแก่แก้ไว้)
 import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -65,12 +66,25 @@ async function makeUser(role: "buyer" | "owner", displayName: string) {
 let owner: Awaited<ReturnType<typeof makeUser>>;
 let buyer: Awaited<ReturnType<typeof makeUser>>;
 
+/** ค่าจริงในฐานข้อมูลก่อนเทสต์ — คืนให้ตอนจบ */
+let snapshot: ProductSettingsForm[] = [];
+
 beforeAll(async () => {
+  snapshot = (await readProductSettings(admin)).products.map((p) => {
+    const form: ProductSettingsForm & { imageUrl?: string } = { ...p };
+    delete form.imageUrl;
+    return form;
+  });
+  // เทสต์นี้เทียบกับค่าตาม merchant.json — ตั้งให้ตรงก่อน แล้วคืนค่าจริงตอนจบ
+  expect(await saveProductSettings(admin, ORIGINAL)).toEqual({ ok: true });
   [owner, buyer] = await Promise.all([makeUser("owner", "เถ้าแก่ตั้งราคา"), makeUser("buyer", "คุณลองราคา")]);
 });
 
 afterAll(async () => {
-  await saveProductSettings(admin, ORIGINAL);
+  for (const form of snapshot) {
+    const restored = await saveProductSettings(admin, form);
+    if (!restored.ok) throw new Error(`คืนค่าสินค้า ${form.sku} ไม่สำเร็จ: ${JSON.stringify(restored.errors)}`);
+  }
   await Promise.all(created.map((id) => admin.auth.admin.deleteUser(id)));
 });
 
@@ -125,6 +139,33 @@ describe("ตั้งค่าสินค้า (Owner-Settings)", () => {
       .update({ volume_tiers: [{ minQty: 3000, price: 100 }] })
       .eq("sku", seeded.sku);
     expect(error?.message).toMatch(/products_tiers_within_range/);
+  });
+
+  it("บันทึกจากแท็บเก่า (ค่าระดับร้านเป็น null · ไม่ส่งของแถม) → ไม่ทับค่าที่อีกแท็บเพิ่งตั้ง", async () => {
+    // แท็บ A: ตั้งเกณฑ์มูลค่าดีลกับต้นทุนเงินทุนใหม่ และปิดของแถม
+    const first = await saveProductSettings(admin, {
+      ...ORIGINAL,
+      costOfCapitalPct: 15,
+      escalationDealValue: 250_000,
+      gifts: [{ sku: "ADP-20W", enabled: false }],
+    });
+    expect(first).toEqual({ ok: true });
+    try {
+      // แท็บ B (เปิดไว้ก่อน): แก้แค่ราคาพื้น — ช่องระดับร้านไม่ได้แตะ ส่ง null · ไม่ได้กดของแถม
+      const second = await saveProductSettings(admin, {
+        ...ORIGINAL,
+        floorPrice: 125,
+        costOfCapitalPct: null,
+        escalationDealValue: null,
+        gifts: [],
+      });
+      expect(second).toEqual({ ok: true });
+      const page = await readProductSettings(owner.client);
+      expect(page.products[0]).toMatchObject({ floorPrice: 125, costOfCapitalPct: 15, escalationDealValue: 250_000 });
+      expect(page.gifts).toEqual([expect.objectContaining({ sku: "ADP-20W", enabled: false })]);
+    } finally {
+      expect(await saveProductSettings(admin, ORIGINAL)).toEqual({ ok: true });
+    }
   });
 
   it("เรียก RPC บันทึกตรงๆ ด้วยบัญชีเถ้าแก่ไม่ได้ (ต้องผ่าน server ที่เช็กสิทธิ์)", async () => {

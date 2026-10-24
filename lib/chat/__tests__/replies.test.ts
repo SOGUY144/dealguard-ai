@@ -41,6 +41,14 @@ describe("replyFor", () => {
     expect(handoff).toBeUndefined();
   });
 
+  it("มีข้อเสนอที่ได้ราคาเท่าที่ขอ (ขอ 135 → จ่ายสด 135) → ไม่บอกว่าให้ไม่ไหว บอกว่าได้ถ้าเลือกทางนั้น", () => {
+    const { messages } = replyFor({ kind: "offers", offers: priced, state }, { ...base, requestedPrice: 135 });
+    expect(messages[0]).toEqual({
+      type: "ai_text",
+      text: "สวัสดีครับคุณนก ราคา 135 ได้ครับถ้าสั่ง 1,500 ชิ้น หรือจ่ายสด มี 3 ทางให้เลือกครับ",
+    });
+  });
+
   it("มีข้อเสนอแต่ไม่ได้บอกราคา → ไม่แต่งราคาที่ลูกค้าไม่ได้ขอ", () => {
     const { messages } = replyFor({ kind: "offers", offers: priced, state }, { ...base, requestedPrice: null });
     expect(messages[0]).toEqual({
@@ -64,6 +72,17 @@ describe("replyFor", () => {
     expect(texts(messages)).toEqual([
       "ราคา 130 ที่ 1,000 ชิ้นเฮียชัยลดให้ไม่ได้ครับคุณนก สายชาร์จ USB-C 1 เมตร ราคาส่ง ฿150 ต่อชิ้น รวม ฿150,000 ถ้าสนใจกดยืนยันได้เลยครับ",
     ]);
+  });
+
+  it("ขอลดโดยไม่บอกราคา แต่สินค้าลดไม่ได้เลย → ไม่ขึ้นต้น 'ได้ครับ'", () => {
+    const offer = { ...MOCK_OFFERS[0], lever: "list" as const, label: "ราคาปกติ", pricePerUnit: 150, qty: 1000, total: 150_000 };
+    const { messages } = replyFor(
+      { kind: "accept_list", offer: { offer, economics }, state },
+      { ...base, requestedPrice: null, askedDiscount: true },
+    );
+    expect(texts(messages)[0]).toBe(
+      "สายชาร์จ USB-C 1 เมตร ตอนนี้เฮียชัยลดเพิ่มให้ไม่ได้ครับคุณนก ราคาส่ง ฿150 ต่อชิ้น 1,000 ชิ้น รวม ฿150,000 ถ้าสนใจกดยืนยันได้เลยครับ",
+    );
   });
 
   it("ยังไม่รู้จำนวน → ถามจำนวน พร้อมบอกราคาขาย", () => {

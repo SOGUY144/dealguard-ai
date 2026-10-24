@@ -19,7 +19,8 @@ export type GiftForm = {
   name: string;
   unitCost: number;
   perceivedValue: number;
-  qtyAvailable: number;
+  /** null = ไม่ได้แก้ (ไม่เขียนทับสต๊อกที่ออเดอร์หักไปแล้ว) — เพิ่มของแถมใหม่ต้องใส่เสมอ */
+  qtyAvailable: number | null;
   enabled: boolean;
 };
 
@@ -59,7 +60,8 @@ export function validateGift(g: GiftForm, taken: string[], own?: string): FieldE
   const errors = checkIdentity(g.sku, g.name, taken, own);
   if (!Number.isFinite(g.unitCost) || g.unitCost < 0) errors.unitCost = "ใส่ต้นทุนตั้งแต่ 0";
   if (!Number.isFinite(g.perceivedValue) || g.perceivedValue < 0) errors.perceivedValue = "ใส่มูลค่าตั้งแต่ 0";
-  if (!Number.isInteger(g.qtyAvailable) || g.qtyAvailable < 0) errors.qtyAvailable = "ใส่จำนวนเต็มตั้งแต่ 0";
+  if (g.qtyAvailable !== null && (!Number.isInteger(g.qtyAvailable) || g.qtyAvailable < 0))
+    errors.qtyAvailable = "ใส่จำนวนเต็มตั้งแต่ 0";
   return errors;
 }
 
@@ -117,7 +119,10 @@ const normalizeHeader = (v: unknown) =>
     .replace(/\s+/g, "");
 
 const isBlank = (v: unknown) => v === null || v === undefined || String(v).trim() === "";
-const toNumber = (v: unknown) => (typeof v === "number" ? v : isBlank(v) ? Number.NaN : Number(String(v).replace(/[,฿\s]/g, "")));
+const toNumber = (v: unknown) =>
+  typeof v === "number" ? v : isBlank(v) ? Number.NaN : Number(String(v).replace(/[,฿%\s]/g, ""));
+/** ช่องรูปแบบ % ใน Excel อ่านได้เป็นสัดส่วน (5% → 0.05) — แปลงกลับเป็น % · ข้อความ "5%" อ่านเป็น 5 อยู่แล้ว */
+const toPercent = (v: unknown) => (typeof v === "number" && v > 0 && v < 1 ? Math.round(v * 10_000) / 100 : toNumber(v));
 
 export type ImageResult = { ok: true; imageUrl: string } | { ok: false; error: string };
 export type ImportResult =
@@ -127,7 +132,13 @@ export type ImportResult =
 
 export type ImportRow = { line: number; action: "create" | "update"; product: NewProduct; errors: FieldErrors };
 export type ImportParse = { ok: true; rows: ImportRow[] } | { ok: false; error: string };
-export type ExistingProduct = { sku: string; tiers: { minQty: number; price: number }[] };
+/** สินค้าที่มีอยู่แล้ว — ใช้เช็กขั้นราคากับพื้นใหม่ และเติมเงื่อนไขเดิมเมื่อไฟล์ไม่มีคอลัมน์นั้น */
+export type ExistingProduct = {
+  sku: string;
+  tiers: { minQty: number; price: number }[];
+  cashDiscountPct?: number;
+  defaultCreditDays?: number;
+};
 
 /** rows = แถวจาก Excel/CSV (แถวแรกเป็นหัวตาราง) · existing = สินค้าในร้าน · giftSkus = รหัสของแถม (ห้ามใช้ซ้ำ) */
 export function parseImportSheet(rows: unknown[][], existing: ExistingProduct[], giftSkus: string[] = []): ImportParse {
@@ -141,6 +152,7 @@ export function parseImportSheet(rows: unknown[][], existing: ExistingProduct[],
   const missing = COLUMNS.filter((c) => c.required && !index.has(c.key)).map((c) => c.label);
   if (missing.length > 0) return { ok: false, error: `ไม่พบคอลัมน์: ${missing.join(", ")}` };
 
+  const bySku = new Map(existing.map((p) => [p.sku, p]));
   const items: { line: number; product: NewProduct }[] = [];
   rows.slice(1).forEach((cells, i) => {
     if (cells.every(isBlank)) return;
@@ -148,7 +160,14 @@ export function parseImportSheet(rows: unknown[][], existing: ExistingProduct[],
       const at = index.get(key);
       return at === undefined ? undefined : cells[at];
     };
-    const optional = (key: "cashDiscountPct" | "defaultCreditDays") => (isBlank(cell(key)) ? DEFAULTS[key] : toNumber(cell(key)));
+    // ไม่มีคอลัมน์ / ช่องว่าง: สินค้าเดิมใช้ค่าเดิม (ไม่รีเซ็ตเงียบๆ) · สินค้าใหม่ใช้ค่าเริ่มต้น
+    const current = bySku.get(String(cell("sku") ?? "").trim());
+    const optional = (key: "cashDiscountPct" | "defaultCreditDays") =>
+      isBlank(cell(key))
+        ? (current?.[key] ?? DEFAULTS[key])
+        : key === "cashDiscountPct"
+          ? toPercent(cell(key))
+          : toNumber(cell(key));
     items.push({
       line: i + 2,
       product: {

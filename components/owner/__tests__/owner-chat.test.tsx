@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { OwnerChatView } from "@/lib/owner/chat-view";
+import type { Recorder } from "@/components/chat/voice-input";
 import { OwnerChatScreen, type OwnerChatTransport } from "../owner-chat";
 
 const at = "2026-10-24T00:15:00.000Z";
@@ -102,7 +103,7 @@ describe("ไมค์ของเถ้าแก่ — พูดแทนพ�
         transport={transport}
         connect={null}
         voiceInput
-        voice={{ recorder: () => ({ start, stop }), transcribe }}
+        voice={{ recorder: () => ({ start, stop, cancel: vi.fn() }), transcribe }}
       />,
     );
     return { start, stop, transcribe, act: transport.act };
@@ -124,6 +125,43 @@ describe("ไมค์ของเถ้าแก่ — พูดแทนพ�
     fireEvent.click(screen.getByRole("button", { name: "พูดแทนพิมพ์" }));
     fireEvent.click(await screen.findByRole("button", { name: "หยุดอัดเสียง" }));
     expect(await screen.findByText(/แปลงเสียงไม่สำเร็จ/)).toBeInTheDocument();
+  });
+
+  function renderWith(recorder: () => Recorder) {
+    const transport: OwnerChatTransport = { act: vi.fn(async () => refundView), load: vi.fn(async () => refundView) };
+    return render(
+      <OwnerChatScreen
+        initial={refundView}
+        ownerName="เฮียชัย"
+        transport={transport}
+        connect={null}
+        voiceInput
+        voice={{ recorder, transcribe: vi.fn(async () => "x") }}
+      />,
+    );
+  }
+
+  it("ออกจากหน้าตอนกำลังอัด → ปิดไมค์ทันที (ไม่ค้างอัดเบื้องหลัง)", async () => {
+    const cancel = vi.fn();
+    const { unmount } = renderWith(() => ({ start: vi.fn(async () => {}), stop: vi.fn(), cancel }));
+    fireEvent.click(screen.getByRole("button", { name: "พูดแทนพิมพ์" }));
+    await screen.findByRole("button", { name: "หยุดอัดเสียง" });
+    unmount();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("กดไมค์สองครั้งตอนเบราว์เซอร์ถามสิทธิ์ → อัดตัวเดียว", async () => {
+    let allow: () => void = () => {};
+    let made = 0;
+    renderWith(() => {
+      made++;
+      return { start: vi.fn(() => new Promise<void>((r) => (allow = r))), stop: vi.fn(async () => new Blob(["x"])), cancel: vi.fn() };
+    });
+    const mic = screen.getByRole("button", { name: "พูดแทนพิมพ์" });
+    fireEvent.click(mic);
+    fireEvent.click(mic);
+    await act(async () => allow());
+    expect(made).toBe(1);
   });
 
   it("ไม่มีคีย์แปลงเสียง → ปุ่มไมค์กดไม่ได้", () => {

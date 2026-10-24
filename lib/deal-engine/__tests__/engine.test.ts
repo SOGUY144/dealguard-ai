@@ -186,3 +186,43 @@ describe("runDealEngine — กรณีขอบที่พบจากกา�
     expect(lowball.offers[0].economics.marginIfConceded).toBe(20_000);
   });
 });
+
+describe("รีวิวรอบ 3 — มูลค่าเกินเกณฑ์ / จ่ายสด 0% / ราคามีสตางค์", () => {
+  const bare = { ...config.products[0], volumeTiers: [], cashDiscountPct: 0 };
+  const runWith = (cfg: typeof config, intent: Partial<Intent>) =>
+    runDealEngine({ config: cfg, intent: intentOf(intent), state: freshState, buyerName: "คุณนก", messageText: "" });
+
+  it("สินค้าที่ลดไม่ได้เลย ขายราคาปกติแล้วยอดเกินเกณฑ์ → ส่งเถ้าแก่ ไม่ปล่อยให้ยืนยันเอง", () => {
+    const cfg = { ...config, products: [bare], deadStock: [] };
+    const result = runWith(cfg, { requestedPrice: 125, quantity: 2200 });
+    expect(result).toMatchObject({ kind: "escalate", reason: "over_value" });
+  });
+
+  it("ส่วนลดจ่ายสด 0% → ยังเสนอข้อของแถมได้ (ไม่ผูกกับราคาจ่ายสด)", () => {
+    const cfg = { ...config, products: [bare] };
+    const result = runWith(cfg, { requestedPrice: 125, quantity: 1000 });
+    expect(result.kind).toBe("offers");
+    const offers = offersOf(result);
+    expect(offers.some((o) => o.lever === "bundle")).toBe(true);
+    for (const o of offers) expect(o.pricePerUnit).toBeGreaterThanOrEqual(bare.floorPrice);
+  });
+
+  it("ราคามีสตางค์ ไม่ปัดเป็นบาทเต็มจนต่อราคาไม่ได้", () => {
+    const cheap = { ...config.products[0], listPrice: 9.5, unitCost: 6, floorPrice: 8, volumeTiers: [], cashDiscountPct: 0.1 };
+    const result = runWith({ ...config, products: [cheap], deadStock: [] }, { requestedPrice: 9.25, quantity: 1000 });
+    expect(result.kind).toBe("offers");
+    const cash = offersOf(result).find((o) => o.lever === "cash")!;
+    expect(cash.pricePerUnit).toBe(9.25);
+    expect(cash.total).toBe(9250);
+  });
+
+  it("ขั้นราคาเท่าราคาขาย ไม่ใช่ข้อเสนอ 'ซื้อเยอะ'", () => {
+    const flat = { ...config.products[0], volumeTiers: [{ minQty: 1500, price: 150 }] };
+    const offers = offersOf(runWith({ ...config, products: [flat] }, { requestedPrice: 125, quantity: 1000 }));
+    expect(offers.some((o) => o.lever === "volume")).toBe(false);
+  });
+
+  it("ขอราคาสูงกว่าราคาขาย → คิดมูลค่าที่ราคาขาย (ไม่ส่งเถ้าแก่เกินจริง)", () => {
+    expect(runWith(config, { requestedPrice: 200, quantity: 1600 })).toMatchObject({ kind: "accept_list" });
+  });
+});

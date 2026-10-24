@@ -15,15 +15,21 @@ const INJECTION =
 const REFUND = /คืนเงิน|refund|ขอเงินคืน/i;
 // ของเสีย/ชำรุด ต้องให้เถ้าแก่ดู — ใช้วลีเฉพาะ เพราะคำสั้นๆ ชนคำธรรมดาของร้าน
 // ("หัวเสียบ", "เสียเวลา", "เสียดาย", "แตกต่าง", "พังงา" ต้องไม่ใช่ร้องเรียน — AI จะหยุดตอบทั้งแชต)
+// "ใช้ไม่ได้กับ iPhone ไหม" เป็นคำถาม ไม่ใช่ร้องเรียน
 const COMPLAINT =
-  /ร้องเรียน|ไม่พอใจ|แย่มาก|ช้ามาก|ผิดหวัง|โกง|ของเสีย|สินค้าเสีย|เสียหาย|ชำรุด|ของพัง|พังมา|แตกมา|ใช้ไม่ได้|ไม่ทำงาน|(?:สาย|หัว|ตัว|เครื่อง)(?:ชาร์จ)?(?:มัน)?เสีย(?!บ|ง|ดาย|เวลา)|เสีย\s*\d+\s*(?:ชิ้น|อัน|เส้น|ตัว)/;
+  /ร้องเรียน|ไม่พอใจ|แย่มาก|ช้ามาก|ผิดหวัง|โกง|ของเสีย|สินค้าเสีย|เสียหาย|ชำรุด|ของพัง|พังมา|แตกมา|ใช้ไม่ได้(?!\s*(?:กับ|ไหม|มั้ย|หรือ|ใช่))|ไม่ทำงาน(?!\s*(?:กับ|ไหม|มั้ย|หรือ|ใช่))|(?:สาย|หัว|ตัว|เครื่อง)(?:ชาร์จ)?(?:มัน)?เสีย(?!บ|ง|ดาย|เวลา)|เสีย\s*\d+\s*(?:ชิ้น|อัน|เส้น|ตัว)/;
 const ASK_INFO = /ต้นทุน|มีของไหม|มีสต๊อก|สต็อก|ส่งเมื่อไหร่|ส่งกี่วัน|ส่งได้ไหม/;
 const ORDER = /สั่ง|ขอสั่ง|เอา\s*\d/;
+// ขอลด/ต่อราคาโดยไม่บอกราคา ("ถ้าสั่ง 1000 ชิ้น ลดได้ไหม") — ต้องเป็นการต่อราคา ไม่ใช่สั่งซื้อราคาเต็ม
+const DISCOUNT_CUE = /ลด|ต่อราคา|ถูกลง|ราคาพิเศษ|ราคาดี/;
 const CASH = /จ่ายสด|โอนทันที|เงินสด/;
 
 const QTY = /(\d+(?:\.\d+)?)\s*(?:ชิ้น|อัน|ตัว|เส้น|pcs)/i;
 const COMPETITOR = /(?:ร้านข้างๆ|ร้านข้าง|ร้านอื่น|ที่อื่น|เจ้าอื่น)\D{0,15}?(\d+(?:\.\d+)?)/;
+/** ราคาที่ลูกค้าพูดชัดว่าขอ — เท่าราคาร้านอื่นก็นับ ("ร้านอื่นให้ 110 ขอ 110 ได้ไหม") */
+const EXPLICIT_ASK = /(?:ขอ|ลด(?:ให้)?เป็น|เหลือ)\s*(\d+(?:\.\d+)?)(?!\d|\.\d|\s*(?:ชิ้น|อัน|ตัว|เส้น|pcs|%))/i;
 const PRICE_PATTERNS = [
+  /(?:ลด(?:ให้)?เป็น|เหลือ)\s*(\d+(?:\.\d+)?)(?!\d|\.\d|\s*(?:ชิ้น|อัน|ตัว|เส้น|pcs|%))/i,
   /ชิ้นละ\s*(\d+(?:\.\d+)?)/,
   // (?!\d|\.\d) กัน regex ถอยตัวเลขทีละหลัก ("ขอ 1000 ชิ้น" ห้ามได้ราคา 100) แต่ยังรับ "125.-" แบบไทย
   /ขอ\s*(\d+(?:\.\d+)?)(?!\d|\.\d|\s*(?:ชิ้น|อัน|ตัว|เส้น|pcs))/i,
@@ -41,33 +47,37 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
     .replace(/(\d),(?=\d{3}\b)/g, "$1");
 
   const injectionSuspected = INJECTION.test(text);
-  // "ขอลด 10 บาท" คือจำนวนที่ขอลด ไม่ใช่ราคาต่อชิ้น — ตัดออกก่อนหาราคา
-  const priceText = text.replace(/ลด(?:ให้)?\s*\d+(?:\.\d+)?\s*(?:บาท|฿|%)?/g, " ");
+  // "ขอลด 10 บาท" / "ขอ 10%" คือส่วนลดที่ขอ ไม่ใช่ราคาต่อชิ้น — ตัดออกก่อนหาราคา
+  const priceText = text
+    .replace(/ลด(?:ให้)?\s*\d+(?:\.\d+)?\s*(?:บาท|฿|%)?/g, " ")
+    .replace(/\d+(?:\.\d+)?\s*(?:%|เปอร์เซ็นต์|เปอร์เซ็น)/g, " ");
   const competitorPrice = num(text.match(COMPETITOR)?.[1]);
   const quantity = num(text.match(QTY)?.[1]);
 
-  let requestedPrice: number | null = null;
+  const explicit = num(priceText.match(EXPLICIT_ASK)?.[1]);
+  let requestedPrice: number | null = explicit !== null && explicit !== quantity ? explicit : null;
   for (const pattern of PRICE_PATTERNS) {
+    if (requestedPrice !== null) break;
     const value = num(priceText.match(pattern)?.[1]);
-    if (value !== null && value !== competitorPrice && value !== quantity) {
-      requestedPrice = value;
-      break;
-    }
+    if (value !== null && value !== competitorPrice && value !== quantity) requestedPrice = value;
   }
 
+  // ต่อราคามาก่อนถามข้อมูล ("ขอ 125 … ส่งกี่วัน" ต้องได้ข้อเสนอ) · ขอลดมาก่อนสั่งซื้อ
   const intent: Intent["intent"] = REFUND.test(text)
     ? "refund"
     : COMPLAINT.test(text)
       ? "complaint"
-      : ASK_INFO.test(text)
-        ? "ask_info"
-        : requestedPrice !== null || competitorPrice !== null
-          ? "negotiate_price"
-          : ORDER.test(text) && quantity !== null
-            ? "order"
-            : quantity !== null || CASH.test(text)
-              ? "negotiate_price"
-              : "other";
+      : requestedPrice !== null || competitorPrice !== null
+        ? "negotiate_price"
+        : ASK_INFO.test(text)
+          ? "ask_info"
+          : DISCOUNT_CUE.test(text)
+            ? "negotiate_price"
+            : ORDER.test(text) && quantity !== null
+              ? "order"
+              : quantity !== null || CASH.test(text)
+                ? "negotiate_price"
+                : "other";
 
   const mentioned = findProduct(text, ctx.products);
   const credit = text.match(/เครดิต\s*(\d+)\s*วัน/);

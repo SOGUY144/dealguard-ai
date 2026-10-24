@@ -15,7 +15,8 @@ export type ConnectLive = (onChange: () => void, onStatus: (status: "live" | "of
 
 /**
  * ฟัง Realtime แล้วเรียก onUpdate · ต่อไม่ติด/หลุด (wifi บล็อก websocket) → เรียกทุก 10 วินาทีแทน
- * กลับมาที่แท็บ / ต่อกลับมาได้ → เรียกหนึ่งครั้ง เผื่อพลาดเหตุการณ์ระหว่างนั้น
+ * ต่อติดทุกครั้ง / กลับมาที่แท็บ → เรียกหนึ่งครั้ง เผื่อพลาดเหตุการณ์ก่อนเริ่มฟัง
+ * (รวมตอนกลับมาหน้าเดิม: Next 16 เก็บหน้าที่ออกไปไว้ใน <Activity> state เดิมยังอยู่ แต่ไม่ได้ฟังระหว่างนั้น)
  */
 export function useLiveUpdates(connect: ConnectLive | null, onUpdate: () => void): LiveStatus {
   const [status, setStatus] = useState<LiveStatus>("connecting");
@@ -34,7 +35,7 @@ export function useLiveUpdates(connect: ConnectLive | null, onUpdate: () => void
       timer = setTimeout(() => update.current(), DEBOUNCE_MS);
     };
     const set = (next: LiveStatus) => {
-      if (statusRef.current === "offline" && next === "live") refresh();
+      if (next === "live") refresh();
       statusRef.current = next;
       setStatus(next);
     };

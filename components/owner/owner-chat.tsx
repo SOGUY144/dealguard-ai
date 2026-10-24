@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight, CircleCheck, LoaderCircle, Mic, Sparkles, Square, User } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { type ConnectLive, useLiveUpdates } from "@/components/live/use-live-updates";
 import { buttonClass } from "@/components/ui/button";
 import type { ChatMessage } from "@/lib/chat/types";
@@ -47,6 +47,20 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceI
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const recorder = useRef<Recorder | null>(null);
   const autoStop = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** กำลังรอเบราว์เซอร์ให้สิทธิ์ไมค์ — กดซ้ำไม่สร้างตัวอัดที่สอง */
+  const startingMic = useRef(false);
+  const onScreen = useRef(false);
+  // ออกจากหน้า (Next 16 ซ่อนหน้าไว้ด้วย <Activity> แทนการปิด) → ปิดไมค์ทันที ทิ้งเสียงที่อัดค้าง
+  useLayoutEffect(() => {
+    onScreen.current = true;
+    return () => {
+      onScreen.current = false;
+      clearTimeout(autoStop.current);
+      recorder.current?.cancel();
+      recorder.current = null;
+      setDictation((d) => (d === "recording" ? "idle" : d));
+    };
+  }, []);
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   // มาจากปุ่ม "ตอบเอง" (#reply) → พร้อมพิมพ์ทันที
@@ -87,7 +101,6 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceI
   const chips = useMemo(() => quickReplies(esc?.kind ?? null), [esc?.kind]);
   const humanMode = view.mode === "human";
 
-
   async function stopDictation() {
     clearTimeout(autoStop.current);
     const rec = recorder.current;
@@ -110,20 +123,25 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceI
   }
 
   async function onMic() {
-    if (dictation === "transcribing") return;
+    if (dictation === "transcribing" || startingMic.current) return;
     if (dictation === "recording") return void stopDictation();
     setVoiceNotice(null);
     const rec = voice.recorder();
+    startingMic.current = true;
     try {
       await rec.start();
     } catch {
       setVoiceNotice("ใช้ไมค์ไม่ได้ อนุญาตไมค์ในเบราว์เซอร์ หรือพิมพ์แทน");
       return;
+    } finally {
+      startingMic.current = false;
     }
+    if (!onScreen.current) return rec.cancel();
     recorder.current = rec;
     setDictation("recording");
     autoStop.current = setTimeout(() => void stopDictation(), MAX_RECORD_MS);
   }
+
   return (
     <div className="mx-auto flex h-dvh w-full max-w-[760px] flex-col">
       <header className="glass-pill mx-3 mt-3 flex shrink-0 items-center gap-2.5 py-2 pr-3 pl-2">
@@ -235,7 +253,7 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceI
             placeholder={`พิมพ์ตอบ${view.buyerName}...`}
             autoComplete="off"
             enterKeyHint="send"
-            className="h-[34px] w-full bg-transparent text-sm outline-none placeholder:text-muted"
+            className="h-[34px] w-full bg-transparent text-base outline-none placeholder:text-muted md:text-sm"
           />
           <div className="flex items-center gap-1">
             <button

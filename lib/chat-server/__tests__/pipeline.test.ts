@@ -679,3 +679,33 @@ describe("เฟส 5 — LLM เรียบเรียงข้อควา�
     expect(speak).toHaveBeenCalledWith(GOOD_TEXT);
   });
 });
+
+describe("รีวิวรอบ 3 — ยืนยันข้อเสนอเก่าหลังเถ้าแก่เปลี่ยนการตั้งค่า", () => {
+  const confirmLetter = async (view: ChatView, letter: "A" | "B" | "C") => {
+    const card = last(view, "offers")!;
+    return handleAction(deps, nok, { type: "confirm_offer", messageId: card.id, offerId: letter });
+  };
+
+  it("ปิดของแถมหลังเสนอ → ยืนยันข้อของแถมไม่ได้", async () => {
+    const cfg = structuredClone(config);
+    deps.store = store = new MemoryChatStore(cfg);
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น");
+    const bundle = last(view, "offers")!.offers.find((o) => o.lever === "bundle")!;
+    cfg.deadStock = [];
+    const after = await confirmLetter(view, bundle.id);
+    expect(after.notice).toBe("confirm_unavailable");
+    expect(store.orders).toHaveLength(0);
+  });
+
+  it("ลดเกณฑ์มูลค่าดีลหลังเสนอ → ข้อที่เกินเกณฑ์ใหม่ยืนยันเองไม่ได้", async () => {
+    const cfg = structuredClone(config);
+    deps.store = store = new MemoryChatStore(cfg);
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น");
+    cfg.escalationDealValue = 100_000;
+    const after = await confirmLetter(view, "A");
+    expect(after.notice).toBe("confirm_unavailable");
+    expect(store.orders).toHaveLength(0);
+  });
+});

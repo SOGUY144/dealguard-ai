@@ -26,4 +26,13 @@ describe("thaiNumberWordsToDigits", () => {
       expect(thaiNumberWordsToDigits(text)).toBe(text);
     }
   });
+
+  it("ตัวเลขตามด้วยหลักภาษาไทย (2 พัน, 1.5 พัน, 5 ร้อย) = คูณกัน", () => {
+    expect(thaiNumberWordsToDigits("เอา 2 พันชิ้น")).toBe("เอา 2000 ชิ้น");
+    expect(thaiNumberWordsToDigits("1.5 พันชิ้น")).toBe("1500 ชิ้น");
+    expect(thaiNumberWordsToDigits("5 ร้อยชิ้น")).toBe("500 ชิ้น");
+    expect(thaiNumberWordsToDigits("2หมื่นชิ้น")).toBe("20000 ชิ้น");
+    expect(thaiNumberWordsToDigits("ขอ 1 พันชิ้น ราคา 130")).toBe("ขอ 1000 ชิ้น ราคา 130");
+  });
 });
+

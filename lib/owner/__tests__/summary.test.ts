@@ -126,6 +126,8 @@ describe("ช่วงวันของหน้าดีลทั้งหม�
     expect(parseDealRange("abc")).toBe("all");
     expect(parseDealRange(undefined)).toBe("all");
     expect(parseDealRange("7d")).toBe("7d");
+    expect(parseDealRange("toString")).toBe("all");
+    expect(parseDealRange("__proto__")).toBe("all");
   });
   it("จัดกลุ่มตามวัน (ใหม่ก่อน)", () => {
     const sampleDeal = deal(0, 45_000, "2026-10-24T03:00:00Z");

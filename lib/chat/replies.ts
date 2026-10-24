@@ -22,7 +22,22 @@ export type ReplyContext = {
   asksCost?: boolean;
   /** ราคาที่ลูกค้าอ้างว่าร้านอื่นให้ (ไม่ลดตาม แต่ตอบให้รู้ว่าได้ยิน) */
   competitorPrice?: number | null;
+  /** ลูกค้าขอลด (แม้ไม่บอกราคา) — ขายราคาปกติต้องไม่ขึ้นต้นว่า "ได้ครับ" */
+  askedDiscount?: boolean;
 };
+
+/**
+ * ข้อเสนอที่ได้ราคาเท่าที่ลูกค้าขอ → "จ่ายสด" / "สั่ง 1,500 ชิ้น" / "รับของแถม" (ว่าง = ไม่มีข้อไหนถึง)
+ * ใช้ทั้ง template และ intro_points ของ GPT — ห้ามบอกว่า "ให้ไม่ไหว" ทั้งที่มีทางให้ได้
+ */
+export function conditionsMeetingAsk(offers: Offer[], requestedPrice: number | null): string {
+  if (requestedPrice === null) return "";
+  const asked = Math.ceil(requestedPrice * 100) / 100;
+  return offers
+    .filter((o) => o.pricePerUnit <= asked)
+    .map((o) => (o.lever === "volume" ? `สั่ง ${formatQty(o.qty)} ชิ้น` : o.lever === "cash" ? "จ่ายสด" : o.lever === "bundle" ? "รับของแถม" : o.label))
+    .join(" หรือ");
+}
 
 export type Reply = {
   messages: ChatMessageDraft[];
@@ -105,24 +120,31 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
       const offers = result.offers.map((p) => p.offer);
       const n = offers.length;
       const qtyText = formatQty(qty ?? offers.find((o) => o.lever !== "volume")?.qty ?? 0);
+      const meets = conditionsMeetingAsk(offers, requestedPrice);
       const intro =
-        requestedPrice !== null
-          ? `สวัสดีครับ${buyerName} ราคา ${formatQty(Math.ceil(requestedPrice))} ที่ ${qtyText} ชิ้น${owner}ให้ไม่ไหว แต่มี ${n} ทางให้เลือกครับ`
-          : `สวัสดีครับ${buyerName} ${product?.name ?? "สินค้านี้"} ${qtyText} ชิ้น ${owner}มี ${n} ทางให้เลือกครับ`;
+        requestedPrice === null
+          ? `สวัสดีครับ${buyerName} ${product?.name ?? "สินค้านี้"} ${qtyText} ชิ้น ${owner}มี ${n} ทางให้เลือกครับ`
+          : meets
+            ? `สวัสดีครับ${buyerName} ราคา ${formatQty(Math.ceil(requestedPrice))} ได้ครับถ้า${meets} มี ${n} ทางให้เลือกครับ`
+            : `สวัสดีครับ${buyerName} ราคา ${formatQty(Math.ceil(requestedPrice))} ที่ ${qtyText} ชิ้น${owner}ให้ไม่ไหว แต่มี ${n} ทางให้เลือกครับ`;
       return { messages: [text(intro), { type: "offers", sku: skuOf(ctx), offers }] };
     }
 
     case "accept_list": {
       const { offer } = result.offer;
       const name = product?.name ?? "สินค้านี้";
-      // ขอต่ำกว่าราคาขาย แต่สินค้านี้ไม่มีทางลด (ไม่มีขั้นราคา / ส่วนลดจ่ายสด / ของแถม) — ห้ามขึ้นต้นว่า "ได้ครับ"
-      const refused = requestedPrice !== null && requestedPrice < offer.pricePerUnit;
+      // ขอต่ำกว่าราคาขาย / ขอลด แต่สินค้านี้ไม่มีทางลด (ไม่มีขั้นราคา / ส่วนลดจ่ายสด / ของแถม) — ห้ามขึ้นต้นว่า "ได้ครับ"
+      const refusedPrice = requestedPrice !== null && requestedPrice < offer.pricePerUnit;
+      const refusedDiscount = requestedPrice === null && ctx.askedDiscount;
+      const price = `ราคาส่ง ${formatBaht(offer.pricePerUnit)} ต่อชิ้น`;
       return {
         messages: [
           text(
-            refused
-              ? `ราคา ${formatQty(Math.ceil(requestedPrice))} ที่ ${formatQty(offer.qty)} ชิ้น${owner}ลดให้ไม่ได้ครับ${buyerName} ${name} ราคาส่ง ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} ถ้าสนใจกดยืนยันได้เลยครับ`
-              : `ได้ครับ${buyerName} ${name} ${formatQty(offer.qty)} ชิ้น ราคา ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} กดยืนยันได้เลยครับ`,
+            refusedPrice
+              ? `ราคา ${formatQty(Math.ceil(requestedPrice))} ที่ ${formatQty(offer.qty)} ชิ้น${owner}ลดให้ไม่ได้ครับ${buyerName} ${name} ${price} รวม ${formatBaht(offer.total)} ถ้าสนใจกดยืนยันได้เลยครับ`
+              : refusedDiscount
+                ? `${name} ตอนนี้${owner}ลดเพิ่มให้ไม่ได้ครับ${buyerName} ${price} ${formatQty(offer.qty)} ชิ้น รวม ${formatBaht(offer.total)} ถ้าสนใจกดยืนยันได้เลยครับ`
+                : `ได้ครับ${buyerName} ${name} ${formatQty(offer.qty)} ชิ้น ราคา ${formatBaht(offer.pricePerUnit)} ต่อชิ้น รวม ${formatBaht(offer.total)} กดยืนยันได้เลยครับ`,
           ),
           { type: "offers", sku: skuOf(ctx), offers: [offer] },
         ],

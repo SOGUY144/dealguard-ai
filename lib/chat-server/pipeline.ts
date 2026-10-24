@@ -113,15 +113,22 @@ function view(
 
 const clock = (deps: PipelineDeps) => (deps.now ?? (() => new Date()))();
 
+/** ข้อเสนอนี้ยังยืนยันได้ตามการตั้งค่าตอนนี้: ไม่ต่ำกว่าพื้น · ของแถมยังเปิดใช้ · ไม่เกินเกณฑ์มูลค่าดีล */
+function stillValid(offer: Offer, product: MerchantConfig["products"][number], config: MerchantConfig): boolean {
+  const gift = offer.bundle;
+  if (gift && !config.deadStock.some((d) => (gift.sku ? d.sku === gift.sku : d.name === gift.name))) return false;
+  return offer.pricePerUnit >= product.floorPrice && offer.total <= config.escalationDealValue;
+}
+
 /**
- * การ์ดข้อเสนอล่าสุดที่ยังใช้ได้จริง: ยังไม่ยืนยัน ไม่เก่าเกิน 24 ชม. สินค้ายังเปิดให้ AI ขาย และไม่ต่ำกว่าราคาพื้นปัจจุบัน
+ * การ์ดข้อเสนอล่าสุดที่ยังใช้ได้จริง: ยังไม่ยืนยัน ไม่เก่าเกิน 24 ชม. สินค้ายังเปิดให้ AI ขาย และทุกข้อยังยืนยันได้
  * ใช้ไม่ได้ = ไม่ชี้ไปการ์ดนั้น ไม่ชวนเลือก (ไม่งั้นลูกค้าวนกดยืนยันไม่ได้)
  */
 function usableOffers(messages: ChatMessage[], config: MerchantConfig, now: Date): ChatMessageOf<"offers"> | undefined {
   const card = lastOffers(messages);
   if (!card || card.confirmed || isOfferCardExpired(card, now)) return undefined;
   const product = config.products.find((p) => p.sku === card.sku);
-  if (!product || card.offers.some((o) => o.pricePerUnit < product.floorPrice)) return undefined;
+  if (!product || !card.offers.every((o) => stillValid(o, product, config))) return undefined;
   return card;
 }
 
@@ -245,6 +252,7 @@ async function send(
     openOffers: open,
     asksCost: ASKS_COST.test(text),
     competitorPrice,
+    askedDiscount: intent.intent === "negotiate_price",
   });
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
   // LLM ได้แค่ตัวเลขที่ Deal Engine คิดแล้ว + ชื่อลูกค้า (ไม่ได้ข้อความดิบ) · ตรวจไม่ผ่านใช้ template
@@ -362,7 +370,8 @@ async function confirmOffer(
   const product = config.products.find((p) => p.sku === stored.sku);
   // ข้อเสนอเก่า หรือราคา/สินค้าเปลี่ยนไปแล้ว (เถ้าแก่ขึ้นราคาพื้น / ปิด AI สินค้านี้) → ยืนยันไม่ได้ ให้ขอข้อเสนอใหม่
   const expired = now().getTime() - Date.parse(stored.createdAt) > OFFER_TTL_MS;
-  if (!product || expired || stored.offer.pricePerUnit < product.floorPrice) return rejected();
+  // + เถ้าแก่ปิดของแถมชิ้นนั้น / ลดเกณฑ์มูลค่าดีลลงหลังเสนอ → ข้อเสนอเก่ายืนยันเองไม่ได้ ให้ขอใหม่
+  if (!product || expired || !stillValid(stored.offer, product, config)) return rejected();
   const productName = product.name;
 
   let order = await store.createOrder({

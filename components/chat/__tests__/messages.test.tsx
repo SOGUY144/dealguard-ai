@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MOCK_OFFERS } from "@/lib/chat/mock-offers";
 import { HandoffCard } from "../handoff-card";
 import { OfferList } from "../offer-list";
 import { OrderSummaryCard } from "../order-summary-card";
 import { SystemNotice } from "../system-notice";
 import { VoiceBubble } from "../voice-bubble";
+import { voicePlayer } from "../voice-player";
 
 describe("OfferList", () => {
   const renderList = (props: Partial<Parameters<typeof OfferList>[0]> = {}) => {
@@ -74,6 +75,38 @@ describe("VoiceBubble", () => {
     act(() => vi.advanceTimersByTime(14_000));
     expect(screen.getByRole("button", { name: "เล่นข้อความเสียง" })).toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  describe("เล่นเสียงตอบเอง (รีวิวรอบ 3)", () => {
+    let play: ReturnType<typeof vi.fn>;
+    let pause: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      play = vi.fn(async () => {});
+      pause = vi.fn();
+      vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(play as () => Promise<void>);
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(pause as () => void);
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it("เล่นเองครั้งเดียว — กลับมาหน้าแชตอีกครั้ง (ฟองเดิม render ใหม่) ไม่เล่นซ้ำ", async () => {
+      const { unmount } = render(<VoiceBubble durationSec={5} audioUrl="blob:reply-1" autoPlay />);
+      await act(async () => {});
+      expect(play).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: "หยุดข้อความเสียง" })).toBeInTheDocument();
+      unmount();
+      render(<VoiceBubble durationSec={5} audioUrl="blob:reply-1" autoPlay />);
+      await act(async () => {});
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+
+    it("ออกจากหน้าตอนกำลังเล่น → หยุดเสียง ไม่เล่นต่อเบื้องหลัง", async () => {
+      const { unmount } = render(<VoiceBubble durationSec={5} audioUrl="blob:reply-2" autoPlay />);
+      await act(async () => {});
+      pause.mockClear();
+      unmount();
+      // ตัวเล่นร่วม (ที่ปลดล็อกตอนกดไมค์) ต้องหยุด ไม่ใช่แค่ <audio> ของฟองนี้
+      expect(pause.mock.contexts).toContain(voicePlayer());
+    });
   });
 });
 

@@ -26,13 +26,23 @@ export function formatDuration(seconds: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-/** 300000 → "฿300,000", 6250000 → "฿6.25 ล้าน" */
+/** 300000 → "฿300,000", 12.5 → "฿12.50", 6250000 → "฿6.25 ล้าน", -500 → "−฿500" */
 export function formatBaht(n: number): string {
-  if (n >= 1_000_000) {
-    const millions = Math.round((n / 1_000_000) * 100) / 100;
-    return `฿${millions} ล้าน`;
+  const sign = n < 0 ? "−" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) {
+    const millions = Math.round((abs / 1_000_000) * 100) / 100;
+    return `${sign}฿${millions} ล้าน`;
   }
-  return `฿${Math.round(n).toLocaleString("en-US")}`;
+  // ราคาต่อชิ้นมีสตางค์ได้ (ราคาพื้น 12.50) — แสดง 2 ตำแหน่ง ไม่ปัดเป็นบาทเต็มจนดูเหมือนคิดผิด
+  const satang = Math.round(abs * 100) / 100;
+  const fractional = !Number.isInteger(satang);
+  return `${sign}฿${satang.toLocaleString("en-US", { minimumFractionDigits: fractional ? 2 : 0, maximumFractionDigits: 2 })}`;
+}
+
+/** ปัดเป็นสตางค์ (2 ตำแหน่ง) — กันเศษทศนิยมแบบ 135.5 × 3 = 406.49999 */
+export function roundSatang(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;

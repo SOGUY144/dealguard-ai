@@ -32,7 +32,7 @@ async function merchantId(admin: SupabaseClient): Promise<string> {
 /** รหัสทั้งร้าน (สินค้า + ของแถม) — รหัสห้ามซ้ำกัน */
 async function catalogSkus(admin: SupabaseClient) {
   const [products, gifts] = await Promise.all([
-    admin.from("products").select("sku, volume_tiers"),
+    admin.from("products").select("sku, volume_tiers, cash_discount_pct, default_credit_days"),
     admin.from("dead_stock").select("sku"),
   ]);
   if (products.error) throw new Error(`[catalog] อ่านสินค้า: ${products.error.message}`);
@@ -41,6 +41,8 @@ async function catalogSkus(admin: SupabaseClient) {
     products: (products.data as Row[]).map((p) => ({
       sku: String(p.sku),
       tiers: (p.volume_tiers as { minQty: number; price: number }[]).map((t) => ({ minQty: Number(t.minQty), price: Number(t.price) })),
+      cashDiscountPct: Math.round(Number(p.cash_discount_pct) * 10_000) / 100,
+      defaultCreditDays: Number(p.default_credit_days),
     })),
     giftSkus: (gifts.data as Row[]).map((g) => String(g.sku)),
   };
@@ -73,13 +75,15 @@ export async function createProduct(admin: SupabaseClient, p: NewProduct): Promi
 export async function saveGift(admin: SupabaseClient, g: GiftForm, own?: string): Promise<SaveResult> {
   const { products, giftSkus } = await catalogSkus(admin);
   if (own && !giftSkus.includes(own)) return failed({ form: "ไม่พบของแถมนี้ ลองโหลดหน้าใหม่" });
+  // เพิ่มใหม่ต้องบอกสต๊อก · แก้ของเดิมไม่บอก = ไม่เปลี่ยน (ออเดอร์หักสต๊อกระหว่างเถ้าแก่เปิดหน้าค้างไว้ได้)
+  if (!own && g.qtyAvailable === null) return failed({ qtyAvailable: "ใส่จำนวนเต็มตั้งแต่ 0" });
   const errors = validateGift(g, [...products.map((x) => x.sku), ...giftSkus], own);
   if (hasErrors(errors)) return failed(errors);
   const values = {
     name: g.name.trim(),
     unit_cost: g.unitCost,
     perceived_value: g.perceivedValue,
-    qty_available: g.qtyAvailable,
+    ...(g.qtyAvailable !== null && { qty_available: g.qtyAvailable }),
     gift_enabled: g.enabled,
   };
   const { error } = own

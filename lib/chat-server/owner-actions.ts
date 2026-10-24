@@ -31,6 +31,10 @@ export async function ownerAction(store: ChatStore, chatId: string, action: Owne
       return;
     case "handback":
       await store.resolveEscalations(chatId);
+      // เริ่มนับ "ขอต่ำกว่าพื้น / หลอกระบบ" ใหม่ — ไม่งั้นขอต่ำครั้งเดียวก็ถูกส่งเรื่องกลับมาทันที
+      if (chat.negotiation.belowFloorCount > 0 || chat.negotiation.injectionCount > 0) {
+        await store.setNegotiation(chatId, chat.negotiation, { belowFloorCount: 0, injectionCount: 0 });
+      }
       if (chat.mode === "human") {
         await store.setMode(chatId, "ai");
         await store.appendMessages(chatId, [{ type: "system", kind: "ai_resumed" }]);

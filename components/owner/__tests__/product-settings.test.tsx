@@ -70,7 +70,7 @@ describe("ProductSettings (Owner-Settings)", () => {
     expect(screen.getByText("ทุกขั้นไม่ต่ำกว่าราคาพื้น")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ให้ AI ต่อราคาสินค้านี้/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "ใช้หัวชาร์จ 20W เป็นของแถม" })).toHaveAttribute("aria-pressed", "true");
-    expect(input("ดีลมูลค่าเกิน").value).toBe("300,000");
+    expect((screen.getByLabelText(/ดีลมูลค่าเกิน/) as HTMLInputElement).value).toBe("300,000");
   });
 
   it("ขั้นราคาต่ำกว่าพื้น → บอกตรงช่อง ป้ายเปลี่ยนเป็นเตือน และไม่บันทึก", async () => {
@@ -96,7 +96,7 @@ describe("ProductSettings (Owner-Settings)", () => {
   it("บันทึก → ส่งค่าเป็นตัวเลข (ตัดคอมม่า) แล้วบอกว่าบันทึกแล้ว", async () => {
     const save = setup();
     change(input("ราคาพื้น (ลูกค้าไม่เห็น)"), "125");
-    change(input("ดีลมูลค่าเกิน"), "250,000");
+    change(screen.getByLabelText(/ดีลมูลค่าเกิน/) as HTMLInputElement, "250,000");
     fireEvent.click(screen.getByRole("button", { name: /ให้ AI ต่อราคาสินค้านี้/ }));
     fireEvent.click(screen.getByRole("button", { name: "ใช้หัวชาร์จ 20W เป็นของแถม" }));
     fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
@@ -112,6 +112,19 @@ describe("ProductSettings (Owner-Settings)", () => {
       }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent("บันทึกแล้ว");
+  });
+
+  it("ไม่ได้แตะค่าระดับร้าน → ส่ง null (ไม่เขียนทับค่าที่อีกแท็บ/อีกเครื่องเพิ่งตั้ง) และไม่ส่งของแถมที่ไม่ได้กด", async () => {
+    const save = setup();
+    change(input("ราคาขาย"), "155");
+    fireEvent.click(screen.getByRole("button", { name: "บันทึก" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ listPrice: 155, costOfCapitalPct: null, escalationDealValue: null, gifts: [] }));
+  });
+
+  it("ค่าที่ใช้ทั้งร้านบอกให้ชัด", () => {
+    setup();
+    expect(screen.getAllByText("(ใช้ทั้งร้าน)").length).toBeGreaterThanOrEqual(3);
   });
 
   it("แก้ชื่อสินค้าได้ — ส่งชื่อใหม่ไปบันทึก", async () => {
@@ -213,6 +226,30 @@ describe("เพิ่ม / ลบ / ของแถม / รูป / นำเ�
     await waitFor(() =>
       expect(actions.saveGift).toHaveBeenCalledWith(expect.objectContaining({ sku: "ADP-20W", qtyAvailable: 450 }), "ADP-20W"),
     );
+  });
+
+  it("แก้ชื่อของแถมอย่างเดียว → ไม่ส่งจำนวนสต๊อกที่ค้างในหน้าจอ (ออเดอร์อาจหักไปแล้ว)", async () => {
+    const actions = renderWith();
+    fireEvent.click(within(screen.getByRole("region", { name: "รายการสินค้า" })).getByRole("button", { name: /หัวชาร์จ 20W/ }));
+    const panel = screen.getByRole("region", { name: "ตั้งค่าหัวชาร์จ 20W" });
+    change(within(panel).getByLabelText("ชื่อของแถม"), "หัวชาร์จ 20W ขาว");
+    fireEvent.click(within(panel).getByRole("button", { name: "บันทึก" }));
+    await waitFor(() =>
+      expect(actions.saveGift).toHaveBeenCalledWith(expect.objectContaining({ name: "หัวชาร์จ 20W ขาว", qtyAvailable: null }), "ADP-20W"),
+    );
+  });
+
+  it("แก้ค้างไว้แล้วกดไปของอื่น → ถามก่อน · ไม่ยืนยัน = อยู่หน้าเดิม ค่าที่แก้ยังอยู่", () => {
+    renderWith();
+    const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
+    change(input("ราคาขาย"), "155");
+    fireEvent.click(within(screen.getByRole("region", { name: "รายการสินค้า" })).getByRole("button", { name: /หัวชาร์จ 20W/ }));
+    expect(ask).toHaveBeenCalled();
+    expect(input("ราคาขาย").value).toBe("155");
+    ask.mockReturnValue(true);
+    fireEvent.click(within(screen.getByRole("region", { name: "รายการสินค้า" })).getByRole("button", { name: /หัวชาร์จ 20W/ }));
+    expect(screen.getByRole("region", { name: "ตั้งค่าหัวชาร์จ 20W" })).toBeInTheDocument();
+    ask.mockRestore();
   });
 
   it("ใส่รูปสินค้า → อัปโหลดแล้วแสดงปุ่มเปลี่ยนรูป", async () => {

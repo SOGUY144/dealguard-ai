@@ -2,8 +2,8 @@
 
 import { UnauthorizedError } from "@/lib/chat/transport";
 
-/** อัดเสียงหนึ่งครั้ง — start ขอสิทธิ์ไมค์ (อาจโดนปฏิเสธ) · stop คืนไฟล์เสียง */
-export type Recorder = { start: () => Promise<void>; stop: () => Promise<Blob> };
+/** อัดเสียงหนึ่งครั้ง — start ขอสิทธิ์ไมค์ (อาจโดนปฏิเสธ) · stop คืนไฟล์เสียง · cancel ปิดไมค์ทิ้งเสียงที่อัด */
+export type Recorder = { start: () => Promise<void>; stop: () => Promise<Blob>; cancel: () => void };
 
 /** Chrome/Android = webm, Safari/iOS = mp4 — เลือกแบบที่ browser อัดได้ */
 const TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
@@ -24,6 +24,18 @@ export function browserRecorder(): Recorder {
         if (e.data.size > 0) chunks.push(e.data);
       };
       recorder.start();
+    },
+    cancel() {
+      // ออกจากหน้า / ปิดแชตระหว่างอัด: ปิดไมค์ทันที (ไฟไมค์ของ browser ดับ) และไม่เก็บเสียงไว้ส่งทีหลัง
+      chunks.length = 0;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      stream?.getTracks().forEach((t) => t.stop());
+      recorder = null;
+      stream = null;
     },
     stop() {
       return new Promise((resolve) => {

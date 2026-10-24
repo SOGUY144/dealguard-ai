@@ -242,5 +242,56 @@ describe("pipeline + Supabase", () => {
         .eq("sku", "ADP-20W");
     }
   });
+  describe("ปิดของแถมหลังเสนอแล้ว (รีวิวรอบ 3 · migration 0011)", () => {
+    async function giftCard(name: string) {
+      const buyer = await makeBuyer(name);
+      await handleAction(deps(), buyer, { type: "pick_product", sku: "CBL-C-1M" });
+      const view = await handleAction(deps(), buyer, { type: "send", text: "ขอ 125 ได้ไหม 1000 ชิ้น", inputMode: "text" });
+      const card = last(view, "offers")!;
+      const gift = card.offers.find((o) => o.lever === "bundle")!;
+      expect(gift).toBeDefined();
+      return { buyer, view, card, gift };
+    }
+    const stock = async () => (await admin.from("dead_stock").select("qty_available").eq("sku", "ADP-20W").single()).data!.qty_available;
+
+    it("ลูกค้ากดยืนยันข้อรับของแถม → ยืนยันไม่ได้ ไม่มีออเดอร์ ไม่หักสต๊อก", async () => {
+      const { buyer, card, gift } = await giftCard("ปิดของแถม-กดยืนยัน");
+      const before = await stock();
+      await admin.from("dead_stock").update({ gift_enabled: false }).eq("sku", "ADP-20W");
+      try {
+        const view = await handleAction(deps(), buyer, { type: "confirm_offer", messageId: card.id, offerId: gift.id });
+        expect(view.notice).toBe("confirm_unavailable");
+        expect((await admin.from("orders").select("id").eq("buyer_id", buyer.id)).data).toEqual([]);
+        expect(await stock()).toBe(before);
+      } finally {
+        await admin.from("dead_stock").update({ gift_enabled: true }).eq("sku", "ADP-20W");
+      }
+    });
+
+    it("ฐานข้อมูลปฏิเสธเองด้วย แม้ข้ามการตรวจในโค้ด (เรียก place_order ตรง)", async () => {
+      const { buyer, view, card, gift } = await giftCard("ปิดของแถม-ด่านสอง");
+      const stored = await new SupabaseChatStore(admin).findOffer(view.chatId!, card.id, gift.id);
+      const before = await stock();
+      await admin.from("dead_stock").update({ gift_enabled: false }).eq("sku", "ADP-20W");
+      try {
+        const { data, error } = await admin.rpc("place_order", {
+          p_chat: view.chatId,
+          p_buyer: buyer.id,
+          p_offer: stored!.rowId,
+          p_offer_message: card.id,
+          p_product_name: "สายชาร์จ Type-C 1 เมตร",
+          p_gift_sku: "ADP-20W",
+          p_gift_name: gift.bundle!.name,
+          p_gift_qty: gift.bundle!.qty,
+        });
+        expect(data).toBeNull();
+        expect(error?.message).toMatch(/gift_out_of_stock/);
+        expect((await admin.from("orders").select("id").eq("buyer_id", buyer.id)).data).toEqual([]);
+        expect(await stock()).toBe(before);
+      } finally {
+        await admin.from("dead_stock").update({ gift_enabled: true }).eq("sku", "ADP-20W");
+      }
+    });
+  });
 });
 

@@ -1,7 +1,7 @@
 import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/button";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatDayLabel } from "@/lib/format";
 import { escalationLabel, type OwnerEscalation } from "@/lib/owner/summary";
 
 type Props = {
@@ -12,6 +12,11 @@ type Props = {
 };
 
 const chatHref = (e: OwnerEscalation) => `/owner/chats/${e.chatId}`;
+/** เรื่องค้างจากวันก่อนบอกวันที่ด้วย */
+const when = (at: string) => {
+  const day = formatDayLabel(at, new Date());
+  return day === "วันนี้" ? formatClock(at) : `${day} ${formatClock(at)}`;
+};
 
 /** เรื่องที่ AI หยุดตอบและส่งให้เถ้าแก่ (ส้ม = ต้องให้เถ้าแก่ตัดสินเท่านั้น) */
 export function Escalations({ escalations, openCount: count, ownerName }: Props) {
@@ -53,7 +58,7 @@ export function Escalations({ escalations, openCount: count, ownerName }: Props)
                   <span className="rounded-full bg-warn-bg px-2.5 py-1 text-xs font-semibold text-warn-ink">
                     {escalationLabel(e.kind)}
                   </span>
-                  <span className="text-xs text-muted">{formatClock(e.at)}</span>
+                  <span className="text-xs text-muted">{when(e.at)}</span>
                 </div>
                 <p className="text-sm leading-[1.6]">{e.brief.join(" · ")}</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -77,7 +82,7 @@ export function Escalations({ escalations, openCount: count, ownerName }: Props)
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="text-xs font-semibold text-warn-ink">
-                    {escalationLabel(e.kind)} · {formatClock(e.at)}
+                    {escalationLabel(e.kind)} · {when(e.at)}
                   </span>
                   <span className="text-sm leading-[1.5]">{e.brief[0]}</span>
                 </div>

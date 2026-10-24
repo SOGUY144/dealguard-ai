@@ -51,13 +51,20 @@ function parse(tokens: string[]): number {
   return total + section;
 }
 
+/** เลขอารบิกตามด้วยหลักภาษาไทย: "2 พัน" = 2000, "1.5 พัน" = 1500 (ไม่ใช่ "พันธุ์" / "ร้อยละ") */
+const DIGIT_TIMES_UNIT = /(\d+(?:\.\d+)?)\s*(ร้อย|พัน|หมื่น|แสน|ล้าน)(?!ธ|ละ)/g;
+
 export function thaiNumberWordsToDigits(text: string): string {
   let changed = false;
-  const out = text.replace(RUN, (run, offset: number) => {
+  const multiplied = text.replace(DIGIT_TIMES_UNIT, (_m, digits: string, unit: string) => {
+    changed = true;
+    return ` ${Math.round(Number(digits) * UNITS[unit] * 100) / 100} `;
+  });
+  const out = multiplied.replace(RUN, (run, offset: number) => {
     const tokens = run.match(TOKEN) ?? [];
     const hasUnit = tokens.some((t) => t in UNITS);
     const lone = tokens.length === 1;
-    if (!hasUnit || (lone && !COUNTER.test(text.slice(offset + run.length)))) return run;
+    if (!hasUnit || (lone && !COUNTER.test(multiplied.slice(offset + run.length)))) return run;
     changed = true;
     return ` ${parse(tokens)} `;
   });

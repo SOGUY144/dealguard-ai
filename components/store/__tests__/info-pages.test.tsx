@@ -20,7 +20,7 @@ describe("วิธีสั่งซื้อ", () => {
     const steps = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
     expect(steps[0]).toContain("เลือกสินค้า");
     expect(steps.some((s) => s.includes("กสิกรไทย xxx-x-x5678-x ร้านเฮียชัยโมบาย"))).toBe(true);
-    expect(steps.some((s) => s.includes("LINE ร้านเฮียชัยโมบาย"))).toBe(true);
+    expect(steps.some((s) => s.includes("เฮียชัยจะยืนยันวันส่งของในแชต หรือทักร้านทาง LINE ร้านเฮียชัยโมบาย"))).toBe(true);
     expect(screen.getByText(/24 ชั่วโมง/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "เริ่มแชตต่อราคา" })).toHaveAttribute("href", "/");
   });

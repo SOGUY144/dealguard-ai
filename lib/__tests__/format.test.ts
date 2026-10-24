@@ -11,6 +11,14 @@ describe("format", () => {
     expect(formatBaht(6_250_000)).toBe("฿6.25 ล้าน");
   });
 
+  it("ราคามีสตางค์แสดง 2 ตำแหน่ง · ติดลบใช้ −฿", () => {
+    expect(formatBaht(12.5)).toBe("฿12.50");
+    expect(formatBaht(136.5)).toBe("฿136.50");
+    expect(formatBaht(1234.567)).toBe("฿1,234.57");
+    expect(formatBaht(-500)).toBe("−฿500");
+    expect(formatBaht(-1_500_000)).toBe("−฿1.5 ล้าน");
+  });
+
   it("เวลาเป็นเวลาไทย 24 ชม. ไม่ว่าเครื่องจะอยู่ timezone ไหน", () => {
     expect(formatClock("2026-10-23T14:30:00Z")).toBe("21:30");
     expect(formatClock("2026-10-23T00:05:00Z")).toBe("07:05");

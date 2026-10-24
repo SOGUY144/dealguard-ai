@@ -5,7 +5,7 @@
 // ข้อความแจ้งข้อผิด / "บันทึกแล้ว" / หมายเหตุเงื่อนไขส่งเถ้าแก่ ไม่มีในไฟล์ดีไซน์ แต่งเพิ่ม ต้องให้ทีมตรวจ
 import { Check, FileSpreadsheet, Lock, Plus, Trash2, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ProductThumb } from "@/components/ui/product-thumb";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -54,6 +54,14 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
   );
   const [dialog, setDialog] = useState<Dialog>(null);
   const [notice, setNotice] = useState<Status>({ kind: "idle" });
+  // ช่องที่แก้แล้วยังไม่บันทึก — เปลี่ยนไปของอื่น / ปิดหน้า ต้องถามก่อน ไม่งั้นค่าที่พิมพ์หายเงียบ
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   // ของที่เลือกถูกลบไปแล้ว (แท็บอื่น / เพิ่งลบ) → เลือกอันแรกแทน
   const product = picked?.kind === "product" ? page.products.find((p) => p.sku === picked.sku) : undefined;
@@ -112,6 +120,8 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
           gifts={page.gifts}
           current={shownProduct ? { kind: "product", sku: shownProduct.sku } : shownGift ? { kind: "gift", sku: shownGift.sku } : null}
           onChoose={(s) => {
+            if (dirty && !window.confirm("มีค่าที่แก้แล้วยังไม่บันทึก ทิ้งแล้วไปต่อไหม?")) return;
+            setDirty(false);
             setPicked(s);
             setNotice({ kind: "idle" });
           }}
@@ -124,6 +134,7 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
             actions={actions}
             onSaved={refresh}
             onDelete={() => setDialog({ delete: { kind: "product", sku: shownProduct.sku, name: shownProduct.name } })}
+            onDirtyChange={setDirty}
             shrink={shrink}
           />
         ) : shownGift ? (
@@ -133,6 +144,7 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
             actions={actions}
             onSaved={refresh}
             onDelete={() => setDialog({ delete: { kind: "gift", sku: shownGift.sku, name: shownGift.name } })}
+            onDirtyChange={setDirty}
             shrink={shrink}
           />
         ) : (
@@ -159,7 +171,12 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
       )}
       {dialog === "import" && (
         <ImportDialog
-          existing={page.products.map((p) => ({ sku: p.sku, tiers: p.tiers }))}
+          existing={page.products.map((p) => ({
+            sku: p.sku,
+            tiers: p.tiers,
+            cashDiscountPct: p.cashDiscountPct,
+            defaultCreditDays: p.defaultCreditDays,
+          }))}
           giftSkus={page.gifts.map((g) => g.sku)}
           current={page.products.map((p) => ({
             sku: p.sku,
@@ -202,6 +219,11 @@ export function ProductSettings({ page, actions, shrink, readXlsx }: Props) {
       )}
     </div>
   );
+}
+
+/** ค่านี้ใช้กับทุกสินค้า ไม่ใช่เฉพาะสินค้าที่เปิดอยู่ */
+function ShopWide() {
+  return <span className="text-xs font-normal text-muted">(ใช้ทั้งร้าน)</span>;
 }
 
 // ───────────────────────── รายการด้านซ้าย ─────────────────────────
@@ -320,6 +342,7 @@ function ProductPanel({
   actions,
   onSaved,
   onDelete,
+  onDirtyChange,
   shrink,
 }: {
   saved: SavedProduct;
@@ -327,6 +350,7 @@ function ProductPanel({
   actions: CatalogActions;
   onSaved: () => void;
   onDelete: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   shrink?: (file: File) => Promise<Blob>;
 }) {
   const [draft, setDraft] = useState<Draft>(() => toDraft(saved));
@@ -334,6 +358,10 @@ function ProductPanel({
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   const form = useMemo(() => toForm(saved.sku, draft), [draft, saved.sku]);
+  // ค่าที่บันทึกล่าสุด (ตอนเปิด / หลังบันทึก / หลังยกเลิก) — ต่างจากนี้ = ยังไม่บันทึก
+  const [baseline, setBaseline] = useState(() => JSON.stringify(form));
+  const dirty = JSON.stringify(form) !== baseline;
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const errors = useMemo(() => ({ ...serverErrors, ...validateSettings(form) }), [form, serverErrors]);
 
   const edit = (patch: Partial<Draft>) => {
@@ -350,10 +378,18 @@ function ProductPanel({
       return;
     }
     setStatus({ kind: "saving" });
+    // ค่าระดับร้าน / ของแถม ส่งเฉพาะที่แก้ — ไม่เขียนทับค่าที่อีกแท็บหรืออีกเครื่องเพิ่งตั้ง
+    const toSend: ProductSettingsForm = {
+      ...form,
+      costOfCapitalPct: form.costOfCapitalPct === saved.costOfCapitalPct ? null : form.costOfCapitalPct,
+      escalationDealValue: form.escalationDealValue === saved.escalationDealValue ? null : form.escalationDealValue,
+      gifts: form.gifts.filter((g) => g.enabled !== saved.gifts.find((x) => x.sku === g.sku)?.enabled),
+    };
     try {
-      const result = await actions.save(form);
+      const result = await actions.save(toSend);
       if (result.ok) {
         setStatus({ kind: "saved", message: "บันทึกแล้ว แชตลูกค้าใช้ราคาใหม่ตั้งแต่ข้อความถัดไป" });
+        setBaseline(JSON.stringify(form));
         onSaved();
         return;
       }
@@ -498,7 +534,7 @@ function ProductPanel({
           <Field label="ลดเพิ่มเมื่อจ่ายสด" suffix="%" value={draft.cashDiscountPct} onChange={(v) => edit({ cashDiscountPct: v })} error={errors.cashDiscountPct} />
           <Field label="เครดิตปกติ" suffix="วัน" value={draft.defaultCreditDays} onChange={(v) => edit({ defaultCreditDays: v })} error={errors.defaultCreditDays} />
           <Field
-            label="ต้นทุนเงินทุน"
+            label={<>ต้นทุนเงินทุน <ShopWide /></>}
             suffix="% ต่อปี"
             value={draft.costOfCapitalPct}
             onChange={(v) => edit({ costOfCapitalPct: v })}
@@ -542,7 +578,9 @@ function ProductPanel({
         <button
           type="button"
           onClick={() => {
-            setDraft(toDraft(saved));
+            const reset = toDraft(saved);
+            setDraft(reset);
+            setBaseline(JSON.stringify(toForm(saved.sku, reset)));
             setServerErrors({});
             setStatus({ kind: "idle" });
           }}
@@ -651,7 +689,7 @@ function TierRow({
             onChange={(e) => onQty(e.target.value)}
             aria-invalid={qtyError ? true : undefined}
             aria-describedby={qtyError ? `${id}-qty-error` : undefined}
-            className="h-[38px] min-w-0 flex-auto bg-transparent font-medium outline-none"
+            className="h-[38px] min-w-0 flex-auto bg-transparent text-base font-medium outline-none"
           />
           <span className="text-[13px] text-muted">ชิ้น</span>
         </div>
@@ -669,7 +707,7 @@ function TierRow({
             onChange={(e) => onPrice(e.target.value)}
             aria-invalid={priceError ? true : undefined}
             aria-describedby={priceError ? `${id}-price-error` : undefined}
-            className="h-[38px] min-w-0 flex-auto bg-transparent font-medium outline-none"
+            className="h-[38px] min-w-0 flex-auto bg-transparent text-base font-medium outline-none"
           />
         </div>
         {Number.isFinite(margin) && <span className="text-[13px] text-muted">กำไร {formatBaht(margin)}/ชิ้น</span>}
@@ -702,7 +740,9 @@ function GiftRow({ gift, on, onToggle }: { gift: GiftInfo; on: boolean; onToggle
     <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/70 px-3.5 py-3">
       <ProductThumb src={gift.imageUrl} className="size-10 rounded-xl" />
       <div className="flex min-w-0 flex-[1_1_200px] flex-col">
-        <span className="text-sm font-semibold">ของแถม: {gift.name}</span>
+        <span className="text-sm font-semibold">
+          ของแถม: {gift.name} <ShopWide />
+        </span>
         <span className="text-xs text-muted">
           ทุน {formatBaht(gift.unitCost)} · ลูกค้ารู้สึกว่าคุ้ม {formatBaht(gift.perceivedValue)} · เหลือ {formatQty(gift.qtyAvailable)} ชิ้น
         </span>
@@ -726,7 +766,7 @@ function EscalationValue({ value, onChange, error }: { value: string; onChange: 
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2.5">
         <label htmlFor={id} className="text-sm">
-          ดีลมูลค่าเกิน
+          ดีลมูลค่าเกิน <ShopWide />
         </label>
         <div
           className={cn(
@@ -743,7 +783,7 @@ function EscalationValue({ value, onChange, error }: { value: string; onChange: 
             onChange={(e) => onChange(e.target.value)}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-error` : undefined}
-            className="h-10 min-w-0 flex-auto bg-transparent font-medium outline-none"
+            className="h-10 min-w-0 flex-auto bg-transparent text-base font-medium outline-none"
           />
         </div>
       </div>

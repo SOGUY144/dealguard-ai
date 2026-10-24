@@ -40,18 +40,21 @@ export type Validation =
 /** ราว 60 คำไทย (ไม่มีเว้นวรรคระหว่างคำ จึงนับตัวอักษร) */
 export const MAX_REPLY_CHARS = 280;
 
-// สัญญาที่ไม่อยู่ในข้อเสนอ (SKILL §6.8) + ข้อมูลหลังบ้านที่ห้ามพูดถึง
+// สัญญาที่ไม่อยู่ในข้อเสนอ (SKILL §6.8) + ข้อมูลหลังบ้านที่ห้ามพูดถึง (รีวิวรอบ 3 เพิ่มคำที่ยังหลุด)
 const FORBIDDEN =
-  /ส่งฟรี|ฟรีค่าส่ง|ค่าส่งฟรี|ไม่คิดค่าส่ง|รับประกัน|ประกันสินค้า|คืนเงิน|เงินคืน|เคลม|ต้นทุน|ราคาทุน|ราคาพื้น|กำไร|มาร์จิ้น|margin|floor|cost/i;
+  /ประกัน|การันตี|warranty|guarantee|ฟรี|free|ค่าส่ง|ขนส่ง|จัดส่ง|ส่งให้|ส่งถึง|ส่งภายใน|ส่งด่วน|ส่งไว|ไม่คิดค่า|เปลี่ยนสินค้า|เปลี่ยนคืน|คืนสินค้า|รับคืน|คืนเงิน|เงินคืน|เคลม|ครึ่งราคา|ทุน|ลด(?:ให้)?อีก|ลดเพิ่ม|ราคาพื้น|กำไร|มาร์จิ้น|margin|floor|cost/i;
 const FEMININE = /ค่ะ|คะ/;
-// ตัวเลขที่เขียนเป็นคำแล้วแปลงไม่ได้ (เช่น "ห้าบาท") ตรวจค่าไม่ได้ — ไม่ให้ผ่าน
-const NUMBER_WORD = /(?:หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ|ร้อย|พัน|หมื่น|แสน|ล้าน)\s*(?:บาท|ชิ้น|%|เปอร์เซ็น|วัน|อัน|เส้น|ตัว)/;
+// ตัวเลขที่เขียนเป็นคำแล้วแปลงไม่ได้ (เช่น "ห้าบาท", "ลดอีกห้า") ตรวจค่าไม่ได้ — ไม่ให้ผ่าน
+const NUMBER_WORD = /หนึ่ง|สอง|สาม(?!ารถ)|สี่|ห้า(?!ง)|หก|เจ็ด|แปด|เก้า|สิบ|(?<!เรียบ)ร้อย(?!ละ)|พัน(?!ธ)|หมื่น|แสน|ล้าน/;
 const OFFER_LETTER = /ข้อ\s*[A-Za-z]\b/;
 // เรื่องที่ GPT ชอบพูดเองทั้งที่ไม่เกิดขึ้น (วัดจริง 24 ต.ค. 2569)
 const MENTIONS_COMPETITOR = /ร้านอื่น|ร้านข้าง|ที่อื่น|เจ้าอื่น|แพลตฟอร์ม/;
 const MENTIONS_REQUEST = /ราคาที่(?:ขอ|เสนอ|ต้องการ)|ที่ขอมา/;
 const CLAIMS_ACTION = /แจ้ง|ส่งเรื่อง|ปรึกษา|อนุมัติ|ถามเฮีย|ถามเจ้าของ/;
-
+// ประโยคเปิดห้ามตอบตกลงราคาที่ลูกค้าขอ / ราคาร้านอื่น — ยกเว้นมีข้อเสนอที่ได้ราคานั้นจริง
+const AGREES = /(?<!ไม่)ได้ครับ|ยินดี|ตกลง|โอเค|จัดให้/;
+const MATCHES_COMPETITOR = /เท่า(?:กับ)?(?:ร้าน|ที่อื่น|เจ้าอื่น)|ตามร้าน(?:อื่น|ข้าง)(?:ได้|เลย)/;
+const REFUSES = /ไม่ไหว|ไม่ได้/;
 export function assembleReply(draft: ReplyDraft): string {
   const options = draft.options.map((o) => `ข้อ ${o.id} ${o.text.trim()}`).join(" · ");
   return [draft.intro.trim(), options, draft.closing.trim()].filter(Boolean).join(" ");
@@ -73,36 +76,85 @@ export function saysNumber(text: string, n: number): boolean {
   return numbersIn(text).includes(n);
 }
 
-function numberSet(values: (number | null | undefined)[], texts: string[]): Set<number> {
-  const set = new Set<number>();
-  for (const n of [...values, ...texts.flatMap(numbersIn)]) {
-    if (n == null) continue;
-    set.add(n);
-    set.add(Math.round(n));
-    set.add(Math.ceil(n));
+/** บทบาทของตัวเลข: ราคาต่อชิ้น / ยอดรวม / จำนวนชิ้น / วันเครดิต / จำนวนทาง / เปอร์เซ็นต์ / วันอื่นๆ */
+type Role = "price" | "total" | "count" | "credit" | "ways" | "percent" | "days";
+type Mention = { value: number; role: Role };
+
+/**
+ * อ่านตัวเลขพร้อมบทบาทจากคำรอบๆ — ชื่อสินค้า/ของแถมตัดออกก่อน (เลขในชื่อ เช่น "1 เมตร", "20W" ไม่ใช่ราคา)
+ * ตัวเลขเปล่าๆ ถือเป็นราคา (ต้องตรงราคาต่อชิ้นพอดี)
+ */
+function mentions(text: string, names: string[]): Mention[] {
+  let t = normalize(text);
+  for (const name of names) if (name.trim()) t = t.split(normalize(name)).join(" ");
+  const out: Mention[] = [];
+  const re = /(฿\s*)?(\d+(?:\.\d+)?)(\s*(?:บาท|ชิ้น|อัน|เส้น|ตัว|กล่อง|แพ็ค|วัน|ทาง|แบบ|ข้อ|%|เปอร์เซ็น))?/g;
+  for (const m of t.matchAll(re)) {
+    const before = t.slice(Math.max(0, m.index - 12), m.index);
+    const unit = (m[3] ?? "").trim();
+    let role: Role;
+    if (unit === "%" || unit === "เปอร์เซ็น") role = "percent";
+    else if (unit === "วัน") role = /เครดิต\s*$/.test(before) ? "credit" : "days";
+    else if (/^(?:ชิ้น|อัน|เส้น|ตัว|กล่อง|แพ็ค)$/.test(unit)) role = "count";
+    else if (/^(?:ทาง|แบบ|ข้อ)$/.test(unit)) role = "ways";
+    else role = /(?:รวม|ยอด|ทั้งหมด)\s*$/.test(before) ? "total" : "price";
+    out.push({ value: Number(m[2]), role });
   }
-  return set;
+  return out;
 }
 
-function offerNumbers(offer: Offer, productName: string): Set<number> {
-  return numberSet(
-    [offer.pricePerUnit, offer.total, offer.qty, offer.creditDays, offer.bundle?.qty],
-    [offer.label, offer.conditionText, offer.bundle?.name ?? "", productName],
-  );
+const fail = (where: string, n: number): Validation => ({ ok: false, reason: `number:${where}:${n}` });
+
+/** ข้อเสนอแต่ละข้อ: ราคา = ราคาต่อชิ้นของข้อนั้น · ยอดหลัง "รวม" = ยอดรวม · ชิ้น = จำนวนหรือจำนวนของแถม · วัน = เครดิตเท่านั้น */
+function checkOption(text: string, offer: Offer, names: string[]): Validation {
+  for (const { value, role } of mentions(text, [...names, offer.bundle?.name ?? ""])) {
+    const ok =
+      role === "price"
+        ? value === offer.pricePerUnit
+        : role === "total"
+          ? value === offer.total
+          : role === "count"
+            ? value === offer.qty || value === offer.bundle?.qty
+            : role === "credit"
+              ? offer.creditDays > 0 && value === offer.creditDays
+              : false;
+    if (!ok) return fail(offer.id, value);
+  }
+  return { ok: true };
 }
 
-/** ประโยคเปิด: ทวนสิ่งที่ลูกค้าขอ/อ้าง + บอกว่ามีกี่ทาง — ไม่พูดราคาข้อเสนอ */
-function introNumbers(facts: ReplyFacts, productName: string): Set<number> {
-  return numberSet(
-    [facts.requestedPrice, facts.qty, facts.competitorPrice, facts.product?.listPrice, facts.offers.length],
-    [productName],
-  );
+/**
+ * ประโยคเปิด: ทวนราคาที่ลูกค้าขอ (ต้องปฏิเสธ เว้นแต่มีข้อที่ได้ราคานั้นจริง) / ราคาร้านอื่น (ต้องปฏิเสธ) / ราคาขาย
+ * จำนวนชิ้น = ที่ลูกค้าขอ · "N ทาง" = จำนวนข้อเสนอ
+ */
+function checkIntro(text: string, facts: ReplyFacts, names: string[]): Validation {
+  const asked = facts.requestedPrice === null ? null : Math.ceil(facts.requestedPrice * 100) / 100;
+  const meeting = asked === null ? [] : facts.offers.filter((o) => o.pricePerUnit <= asked);
+  const meetsAsk = meeting.length > 0;
+  if (MATCHES_COMPETITOR.test(text)) return { ok: false, reason: "competitor" };
+  if (!meetsAsk && AGREES.test(text)) return { ok: false, reason: "claim" };
+  const refuses = REFUSES.test(text);
+  for (const { value, role } of mentions(text, names)) {
+    const ok =
+      role === "count"
+        ? // จำนวนที่ลูกค้าขอ หรือจำนวนของข้อที่ได้ราคาที่ขอ ("ได้ถ้าสั่ง 1,500 ชิ้น")
+          value === facts.qty || meeting.some((o) => o.qty === value)
+        : role === "ways"
+          ? value === facts.offers.length
+          : role === "price" || role === "total"
+            ? (value === asked && (refuses || meetsAsk)) ||
+              (value === facts.competitorPrice && refuses) ||
+              value === facts.product?.listPrice
+            : false;
+    if (!ok) return fail("intro", value);
+  }
+  return { ok: true };
 }
 
-function checkNumbers(text: string, allowed: Set<number>, where: string): Validation {
-  if (NUMBER_WORD.test(normalize(text))) return { ok: false, reason: "number_word" };
-  for (const n of numbersIn(text)) {
-    if (!allowed.has(n)) return { ok: false, reason: `number:${where}:${n}` };
+/** คำถามปิด: ไม่มีตัวเลข (นอกจาก "N ทาง" = จำนวนข้อเสนอ) */
+function checkClosing(text: string, facts: ReplyFacts, names: string[]): Validation {
+  for (const { value, role } of mentions(text, names)) {
+    if (!(role === "ways" && value === facts.offers.length)) return fail("closing", value);
   }
   return { ok: true };
 }
@@ -123,11 +175,13 @@ export function validateDraft(draft: ReplyDraft, facts: ReplyFacts): Validation 
   if (facts.requestedPrice === null && MENTIONS_REQUEST.test(text)) return { ok: false, reason: "request" };
   if (CLAIMS_ACTION.test(text)) return { ok: false, reason: "claim" };
 
-  const productName = facts.product?.name ?? "";
+  if (parts.some((p) => NUMBER_WORD.test(normalize(p)))) return { ok: false, reason: "number_word" };
+
+  const names = [facts.product?.name ?? ""];
   const checks = [
-    checkNumbers(draft.intro, introNumbers(facts, productName), "intro"),
-    ...draft.options.map((o) => checkNumbers(o.text, offerNumbers(facts.offers.find((x) => x.id === o.id)!, productName), o.id)),
-    checkNumbers(draft.closing, numberSet([facts.offers.length], []), "closing"),
+    checkIntro(draft.intro, facts, names),
+    ...draft.options.map((o) => checkOption(o.text, facts.offers.find((x) => x.id === o.id)!, names)),
+    checkClosing(draft.closing, facts, names),
   ];
   return checks.find((c) => !c.ok) ?? { ok: true };
 }

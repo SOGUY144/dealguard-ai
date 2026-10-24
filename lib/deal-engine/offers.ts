@@ -1,10 +1,10 @@
 import "server-only";
-import { formatQty } from "@/lib/format";
+import { formatQty, roundSatang } from "@/lib/format";
 import { computeEconomics, type GiftCost, type RequestBasis } from "./margin";
 import type { MerchantConfig, Offer, PricedOffer, Product } from "./types";
 
 export type OfferRequest = {
-  /** ราคาต่อชิ้นที่ลูกค้าขอ (engine ปัดขึ้นเป็นบาทเต็มก่อนส่งมา) */
+  /** ราคาต่อชิ้นที่ลูกค้าขอ (engine ปัดขึ้นเป็นสตางค์ก่อนส่งมา) */
   requestedPrice: number | null;
   qty: number;
   /** ตัดข้อเสนอที่ยอดรวมเกินนี้ทิ้ง (ก่อนไล่ id) */
@@ -20,6 +20,19 @@ export type BuiltOffers = {
 };
 
 type Draft = Omit<Offer, "id">;
+
+/**
+ * หน่วยปัดราคาของสินค้า: ร้านตั้งราคาเป็นบาทเต็ม → ข้อเสนอเป็นบาทเต็ม (฿145 ไม่ใช่ ฿145.40)
+ * มีสตางค์ในราคาขาย/พื้น/ขั้นราคา (เช่น ฿9.50) → ปัดเป็นสตางค์ ไม่งั้นต่อราคาไม่ได้เลย
+ */
+export function priceStep(product: Product): 1 | 0.01 {
+  const prices = [product.listPrice, product.floorPrice, ...product.volumeTiers.map((t) => t.price)];
+  return prices.every(Number.isInteger) ? 1 : 0.01;
+}
+
+export function roundPrice(n: number, product: Product): number {
+  return priceStep(product) === 1 ? Math.round(n) : roundSatang(n);
+}
 
 const IDS: Offer["id"][] = ["A", "B", "C"];
 
@@ -41,7 +54,7 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
 
   const cashPrice = Math.max(
     product.floorPrice,
-    Math.round(product.listPrice * (1 - product.cashDiscountPct)),
+    roundPrice(product.listPrice * (1 - product.cashDiscountPct), product),
     askedPrice,
   );
   // สินค้าที่ปกติโอนทันทีอยู่แล้ว ลูกค้าไม่ได้เสียเครดิตแลก → ลดให้ = ลดฟรี
@@ -53,13 +66,15 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
         pricePerUnit: cashPrice,
         qty: request.qty,
         conditionText: `${formatQty(request.qty)} ชิ้น · โอนทันที ไม่ใช้เครดิต`,
-        total: cashPrice * request.qty,
+        total: roundSatang(cashPrice * request.qty),
         creditDays: 0,
       },
     });
   }
 
-  const bundle = bundleOffer(product, config, request, cashPrice);
+  // ของแถมชดเชยส่วนต่างกับราคาจ่ายสด — ร้านที่ไม่มีส่วนลดจ่ายสด (0%) เทียบกับราคาที่ลูกค้าขอแทน ไม่งั้นข้อนี้หายไปด้วย
+  const giftAnchor = cashPrice < product.listPrice ? cashPrice : Math.max(product.floorPrice, request.requestedPrice ?? product.floorPrice);
+  const bundle = bundleOffer(product, config, request, giftAnchor);
   if (bundle) drafts.push(bundle);
 
   const maxTotal = request.maxTotal ?? Infinity;
@@ -80,11 +95,11 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
   };
 }
 
-/** tier ที่เล็กที่สุดซึ่งมากกว่าจำนวนที่ขอ และไม่ต่ำกว่าราคาพื้น */
+/** tier ที่เล็กที่สุดซึ่งมากกว่าจำนวนที่ขอ ไม่ต่ำกว่าราคาพื้น และถูกกว่าราคาขาย (เท่าราคาขาย = ซื้อเพิ่มโดยไม่ได้อะไร) */
 function volumeOffer(product: Product, qty: number, askedPrice: number): Draft | null {
   const tier = [...product.volumeTiers]
     .sort((a, b) => a.minQty - b.minQty)
-    .find((t) => t.minQty > qty && t.price >= product.floorPrice);
+    .find((t) => t.minQty > qty && t.price >= product.floorPrice && t.price < product.listPrice);
   if (!tier) return null;
 
   const price = Math.max(tier.price, askedPrice);
@@ -94,7 +109,7 @@ function volumeOffer(product: Product, qty: number, askedPrice: number): Draft |
     pricePerUnit: price,
     qty: tier.minQty,
     conditionText: `เมื่อสั่ง ${formatQty(tier.minQty)} ชิ้น`,
-    total: price * tier.minQty,
+    total: roundSatang(price * tier.minQty),
     creditDays: product.defaultCreditDays,
   };
 }
@@ -107,7 +122,8 @@ function bundleOffer(
   product: Product,
   config: MerchantConfig,
   request: OfferRequest,
-  cashPrice: number,
+  /** ราคาที่ใช้เทียบว่าของแถมต้องชดเชยเท่าไหร่ (ปกติคือราคาจ่ายสด) */
+  anchorPrice: number,
 ): { draft: Draft; gift: GiftCost } | null {
   const stock = config.deadStock.find((d) => d.qtyAvailable > 0 && d.perceivedValue > 0);
   if (!stock) return null;
@@ -115,11 +131,11 @@ function bundleOffer(
   const reference = request.requestedPrice ?? product.floorPrice;
   const price = Math.max(
     product.floorPrice,
-    Math.round(product.listPrice - config.bundleConcessionRatio * (product.listPrice - reference)),
+    roundPrice(product.listPrice - config.bundleConcessionRatio * (product.listPrice - reference), product),
   );
   const giftQty = Math.min(
     stock.qtyAvailable,
-    Math.floor((request.qty * (price - cashPrice)) / stock.perceivedValue),
+    Math.floor((request.qty * (price - anchorPrice)) / stock.perceivedValue),
   );
   // ราคาเท่าราคาขาย + ของแถม = ให้ของฟรีโดยลูกค้าไม่ได้แลกอะไร
   if (giftQty <= 0 || price >= product.listPrice) return null;
@@ -135,7 +151,7 @@ function bundleOffer(
       pricePerUnit: price,
       qty: request.qty,
       conditionText: `${formatQty(request.qty)} ชิ้น + ${stock.name} ${formatQty(giftQty)} ชิ้น`,
-      total: price * request.qty,
+      total: roundSatang(price * request.qty),
       creditDays: product.defaultCreditDays,
       bundle: { sku: stock.sku, name: stock.name, qty: giftQty },
     },

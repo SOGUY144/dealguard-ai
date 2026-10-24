@@ -108,6 +108,14 @@ describe("validateSettings — เงื่อนไขแลกส่วนล�
   });
 });
 
+describe("ค่าระดับร้านไม่ได้แก้ (null)", () => {
+  it("ไม่ตรวจ และส่ง null ให้ฐานข้อมูลใช้ค่าเดิม", () => {
+    const form = { ...base, costOfCapitalPct: null, escalationDealValue: null };
+    expect(validateSettings(form)).toEqual({});
+    expect(toSaveArgs(form)).toMatchObject({ p_cost_of_capital_annual: null, p_escalation_deal_value: null });
+  });
+});
+
 describe("toSaveArgs", () => {
   it("แปลง % เป็นสัดส่วน และเรียงขั้นตามจำนวน", () => {
     const args = toSaveArgs({

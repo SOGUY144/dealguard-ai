@@ -1,16 +1,22 @@
 import "server-only";
-import { formatQty } from "@/lib/format";
+import { formatQty, roundSatang } from "@/lib/format";
 import { buildBrief, type BriefContext } from "./escalation";
 import { assertOffersSafe } from "./guard";
 import { computeEconomics } from "./margin";
-import { buildOffers } from "./offers";
+import { buildOffers, priceStep } from "./offers";
 import type { EngineInput, EngineResult, EscalationKind, PricedOffer, Product } from "./types";
 
 /** จำนวนต้องเป็นจำนวนเต็มบวก — นอกนั้นถือว่ายังไม่รู้จำนวน */
 const validQty = (n: number | null): number | null => (n !== null && Number.isInteger(n) && n > 0 ? n : null);
 
-/** ราคาต้องเป็นตัวเลขบวก แล้วปัดขึ้นเป็นบาทเต็ม (ราคาที่แสดงกับยอดรวมจะได้ตรงกัน) */
-const validPrice = (n: number | null): number | null => (n !== null && Number.isFinite(n) && n > 0 ? Math.ceil(n) : null);
+/**
+ * ราคาต้องเป็นตัวเลขบวก ปัดขึ้นตามหน่วยราคาของสินค้า (บาทเต็ม หรือสตางค์ถ้าร้านตั้งราคามีสตางค์)
+ * ปัดขึ้น = ไม่ให้ราคาต่ำกว่าที่ลูกค้าพูด · ราคาที่แสดงกับยอดรวมตรงกัน
+ */
+function validPrice(n: number | null, product: Product): number | null {
+  if (n === null || !Number.isFinite(n) || n <= 0) return null;
+  return priceStep(product) === 1 ? Math.ceil(roundSatang(n)) : Math.ceil(roundSatang(n * 100)) / 100;
+}
 
 /**
  * Layer 2: ตัดสินจาก Intent ด้วยโค้ดล้วน (SKILL §6.4) — ลำดับการเช็กสำคัญ:
@@ -42,9 +48,10 @@ export function runDealEngine(input: EngineInput): EngineResult {
   const qty = validQty(intent.quantity);
   if (!qty) return { kind: "ask_quantity", sku: product.sku, state };
 
-  const requested = validPrice(intent.requestedPrice);
+  const requested = validPrice(intent.requestedPrice, product);
   // ประเมินมูลค่าที่ราคาพื้นเป็นอย่างต่ำ — ขอราคาต่ำมากจะหลบเกณฑ์ escalate ไม่ได้
-  const valuePrice = Math.max(requested ?? product.listPrice, product.floorPrice);
+  // ขอสูงกว่าราคาขายก็ขายแค่ราคาขาย → คิดมูลค่าที่ราคาขาย ไม่ส่งเถ้าแก่เกินจริง
+  const valuePrice = Math.min(product.listPrice, Math.max(requested ?? product.listPrice, product.floorPrice));
   const overValue = (cheapestDropped?: number) =>
     escalate("over_value", {
       product,
@@ -62,9 +69,17 @@ export function runDealEngine(input: EngineInput): EngineResult {
     });
   if (qty * valuePrice > config.escalationDealValue) return overValue();
 
+  // ขายราคาปกติ — ยอดที่ราคาขายเกินเกณฑ์ก็ยังต้องให้เถ้าแก่ตัดสิน (ลูกค้ายืนยันเองไม่ได้)
+  const sellAtList = (): EngineResult => {
+    const priced = listOffer(input, product, qty);
+    return priced.offer.total > config.escalationDealValue
+      ? overValue(priced.offer.total)
+      : { kind: "accept_list", offer: priced, state };
+  };
+
   // ขอเท่าราคาขายขึ้นไป หรือสั่งซื้อโดยไม่ต่อราคา → ไม่ต้องลด
   const acceptsList = requested !== null ? requested >= product.listPrice : intent.intent === "order";
-  if (acceptsList) return { kind: "accept_list", offer: listOffer(input, product, qty), state };
+  if (acceptsList) return sellAtList();
 
   // นับเฉพาะรอบที่ขอต่ำกว่าพื้น "ติดกัน" — ขอราคาที่รับได้คั่นแล้วเริ่มนับใหม่
   const belowFloor = requested !== null && requested < product.floorPrice;
@@ -79,9 +94,7 @@ export function runDealEngine(input: EngineInput): EngineResult {
   });
   if (offers.length === 0) {
     // ทุกทางเกินอำนาจ → ให้เถ้าแก่ตัดสิน · ลดไม่ได้เลย (เช่น พื้น = ราคาขาย) → ขายราคาปกติ
-    return droppedOverLimit > 0 && minDroppedTotal !== null
-      ? overValue(minDroppedTotal)
-      : { kind: "accept_list", offer: listOffer(input, product, qty), state };
+    return droppedOverLimit > 0 && minDroppedTotal !== null ? overValue(minDroppedTotal) : sellAtList();
   }
   assertOffersSafe(product, qty, offers.map((p) => p.offer));
   return { kind: "offers", offers, state };
@@ -96,7 +109,7 @@ function listOffer(input: EngineInput, product: Product, qty: number): PricedOff
     pricePerUnit: product.listPrice,
     qty,
     conditionText: `${formatQty(qty)} ชิ้น · เครดิต ${product.defaultCreditDays} วัน`,
-    total: product.listPrice * qty,
+    total: roundSatang(product.listPrice * qty),
     creditDays: product.defaultCreditDays,
   };
   assertOffersSafe(product, qty, [offer]);

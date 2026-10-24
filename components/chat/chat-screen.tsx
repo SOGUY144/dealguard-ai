@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Suggestion } from "@/lib/chat/actions";
 import type { MockContext } from "@/lib/chat/mock-responder";
 import type { ScenarioName } from "@/lib/chat/scenarios";
@@ -13,6 +13,7 @@ import { ProductDrawer, ProductSheet } from "./product-panel";
 import { StoreHeader } from "./store-header";
 import { browserVoice, useChatSession, type LiveChat } from "./use-chat-session";
 import type { Recorder } from "./voice-input";
+import { unlockVoicePlayback } from "./voice-player";
 
 type Props = {
   storefront: Storefront;
@@ -63,13 +64,30 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
   const transcribeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
+  // กำลังขอสิทธิ์ไมค์ — กดซ้ำระหว่างนี้ไม่เริ่มอัดตัวที่สอง (ไม่งั้นไมค์ตัวแรกค้าง)
+  const startingMic = useRef(false);
+  // เสียงที่แปลงแล้วแต่ส่งไม่สำเร็จ → ใส่กลับในช่องพิมพ์
+  const [prefill, setPrefill] = useState<{ text: string; n: number } | null>(null);
+
   useEffect(
     () => () => {
       clearTimeout(transcribeTimer.current);
-      clearTimeout(autoStop.current);
     },
     [],
   );
+  // ออกจากหน้า (Next 16 ซ่อนหน้าไว้ด้วย <Activity> แทนการปิด) → ปิดไมค์ทันที ทิ้งเสียงที่อัดค้าง
+  // useLayoutEffect = cleanup ทำก่อนหน้าถูกซ่อน ไม่มีช่วงที่ไมค์ยังเปิดอยู่
+  const onScreen = useRef(false);
+  useLayoutEffect(() => {
+    onScreen.current = true;
+    return () => {
+      onScreen.current = false;
+      clearTimeout(autoStop.current);
+      recorder.current?.cancel();
+      recorder.current = null;
+      setVoiceState((v) => (v === "recording" ? "idle" : v));
+    };
+  }, []);
 
   const lastOf = <T extends string>(type: T) => [...chat.messages].reverse().find((m) => m.type === type);
   const activeCard = lastOf("product_card");
@@ -116,7 +134,12 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
         return;
       }
       setVoiceState("idle");
-      await dispatch({ type: "send", text, inputMode: "voice" });
+      const sent = await dispatch({ type: "send", text, inputMode: "voice" });
+      if (!sent) {
+        // ส่งไม่สำเร็จ (ระบบล่ม / กำลังตอบข้อความก่อน) — ไม่ทิ้งสิ่งที่พูด ใส่ไว้ในช่องพิมพ์ให้กดส่งเอง
+        setPrefill((p) => ({ text, n: (p?.n ?? 0) + 1 }));
+        setVoiceNotice("ส่งเสียงไม่สำเร็จ ข้อความที่พูดอยู่ในช่องพิมพ์แล้ว กดส่งได้เลยครับ");
+      }
     } catch {
       setVoiceNotice("แปลงเสียงไม่สำเร็จ ลองอีกครั้ง หรือพิมพ์แทนได้เลยครับ");
     } finally {
@@ -125,16 +148,23 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
   }
 
   async function onLiveMicPress() {
-    if (voiceState === "transcribing" || !live) return;
+    if (voiceState === "transcribing" || !live || startingMic.current) return;
     if (voiceState === "recording") return stopAndSend();
     setVoiceNotice(null);
+    // iPhone เล่นเสียงตอบเองได้เฉพาะเมื่อปลดล็อกจากการแตะ — ปลดตอนกดไมค์ (คำตอบมาหลังจากนี้หลายวินาที)
+    unlockVoicePlayback();
     const rec = (live.voice ?? browserVoice).recorder();
+    startingMic.current = true;
     try {
       await rec.start();
     } catch {
       setVoiceNotice("ใช้ไมค์ไม่ได้ อนุญาตไมค์ในเบราว์เซอร์ หรือพิมพ์แทนได้เลยครับ");
       return;
+    } finally {
+      startingMic.current = false;
     }
+    // ออกจากหน้าระหว่างรอสิทธิ์ไมค์ → ไม่เริ่มอัดบนหน้าที่ซ่อนอยู่
+    if (!onScreen.current) return rec.cancel();
     recorder.current = rec;
     setVoiceState("recording");
     autoStop.current = setTimeout(() => void stopAndSend(), MAX_RECORD_MS);
@@ -213,6 +243,7 @@ export function ChatScreen({ storefront, products, buyerName, scenario, canLogou
             // แชตจริงยังไม่มีการแปลงเสียง — ห้ามส่งประโยคเดโมเข้าแชตของลูกค้า (เฟส 6 ใช้ STT จริง)
             micAvailable={!liveMode || voiceInput}
             voiceNotice={voiceNotice}
+            prefill={prefill}
             onSend={(text) => dispatch({ type: "send", text, inputMode: "text" })}
             onSuggestion={onSuggestion}
             onToggleProducts={toggleProducts}

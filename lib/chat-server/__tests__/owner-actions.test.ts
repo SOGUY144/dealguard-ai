@@ -83,3 +83,21 @@ describe("ownerAction — เถ้าแก่ตอบเอง / ปิดเ
     await expect(ownerAction(store, "nope", { type: "reply", text: "x" })).rejects.toThrow("chat_not_found");
   });
 });
+
+describe("รีวิวรอบ 3 — ให้ AI ตอบต่อแล้วเริ่มนับใหม่", () => {
+  it("ส่งเรื่องเพราะขอต่ำกว่าพื้น 3 รอบ → handback → ขอต่ำอีกครั้งเดียวไม่ส่งเรื่องทันที", async () => {
+    const fresh = new MemoryChatStore(config);
+    const d: PipelineDeps = { store: fresh, storefront, intentLlm: null };
+    const buyer = { id: "buyer-low", displayName: "คุณต่ำ" };
+    const ask = (t: string) => handleAction(d, buyer, { type: "send", text: t, inputMode: "text" });
+    await handleAction(d, buyer, { type: "pick_product", sku: "CBL-C-1M" });
+    for (let i = 0; i < 3; i++) await ask("ขอ 100 ได้ไหม 1000 ชิ้น");
+    const chat = fresh.chats[0];
+    expect(chat.mode).toBe("human");
+
+    await ownerAction(fresh, chat.id, { type: "handback" });
+    expect(fresh.chats[0].negotiation).toEqual({ belowFloorCount: 0, injectionCount: 0 });
+    const view = await ask("ขอ 100 ได้ไหม 1000 ชิ้น");
+    expect(view.mode).toBe("ai");
+  });
+});
