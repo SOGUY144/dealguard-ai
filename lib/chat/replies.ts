@@ -1,5 +1,5 @@
-// Layer 3 แบบ template: แปลงผลของ Deal Engine เป็นข้อความถึงลูกค้า (เฟส 5 จะให้ LLM เรียบเรียง + ตรวจตัวเลข
-// แล้วใช้ template นี้เป็นทางสำรอง) — ตัวเลขทุกตัวมาจากข้อเสนอ/ราคาขาย/สิ่งที่ลูกค้าพิมพ์เท่านั้น
+// Layer 3 แบบ template: แปลงผลของ Deal Engine เป็นข้อความถึงลูกค้า (ข้อความที่มากับข้อเสนอ LLM เรียบเรียงได้
+// ใน lib/ai/responder.ts แล้วใช้ template นี้เป็นทางสำรอง) — ตัวเลขทุกตัวมาจากข้อเสนอ/ราคาขาย/สิ่งที่ลูกค้าพิมพ์เท่านั้น
 // ข้อความที่ไม่มีในไฟล์ดีไซน์ (ask_product, ask_quantity, accept_list, คุยเรื่องอื่น, escalate ที่ไม่ใช่คืนเงิน) แต่งเพิ่ม ต้องให้ทีมตรวจ
 import { formatBaht, formatQty } from "@/lib/format";
 import type { EngineResult, EscalationKind } from "@/lib/deal-engine/types";

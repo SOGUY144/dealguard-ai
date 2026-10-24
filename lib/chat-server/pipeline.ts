@@ -1,7 +1,9 @@
-// ต่อทุกชั้นของแชตลูกค้า: ข้อความ → Layer 1 (intent) → Layer 2 (Deal Engine) → Layer 3 (template) → เก็บลงที่เก็บ
+// ต่อทุกชั้นของแชตลูกค้า: ข้อความ → Layer 1 (intent) → Layer 2 (Deal Engine) → Layer 3 (template / LLM + ตรวจตัวเลข) → เก็บลงที่เก็บ
 // ตัวเลขราคาทุกตัวมาจาก Deal Engine · ยืนยันออเดอร์จากข้อเสนอที่ server เก็บไว้เท่านั้น
 import "server-only";
 import { parseIntent, type IntentLlm } from "@/lib/ai/intent";
+import { writeOffersText, type ReplyWriter } from "@/lib/ai/responder";
+import { saysNumber, type ReplyFacts } from "@/lib/ai/validator";
 import type { ChatAction, ChatView } from "@/lib/chat/actions";
 import {
   addressName,
@@ -31,6 +33,9 @@ export type PipelineDeps = {
   speaker?: Speaker | null;
   /** รอเสียงได้นานสุดเท่านี้ ช้ากว่านี้ตอบเป็นข้อความแทน */
   voiceTimeoutMs?: number;
+  /** LLM เรียบเรียงข้อความที่มากับข้อเสนอ — null/ไม่ใส่ = template อย่างเดียว */
+  replyWriter?: ReplyWriter | null;
+  replyTimeoutMs?: number;
 };
 
 /** คำตอบที่จะบันทึก + เสียงของข้อความ ai_voice (ตำแหน่งใน messages) */
@@ -175,7 +180,9 @@ async function send(
   if (chat.mode === "human") return onlyBuyerText(chat);
 
   const products = toPublicProducts(config);
-  const { intent } = await parseIntent(text, { products, lastSku: lastSku(messages), history }, deps.intentLlm);
+  const started = Date.now();
+  const { intent, source: parsedBy } = await parseIntent(text, { products, lastSku: lastSku(messages), history }, deps.intentLlm);
+  const parsedAt = Date.now();
 
   const now = clock(deps);
   const open = usableOffers(messages, config, now);
@@ -223,10 +230,12 @@ async function send(
     current = fresh;
     result = runDealEngine({ config, intent, state: current.negotiation, buyerName, messageText: text });
   }
-  const reply = replyFor(result, {
+  const engineAt = Date.now();
+  const product = products.find((p) => p.sku === intent.sku);
+  const template = replyFor(result, {
     storefront,
     buyerName,
-    product: products.find((p) => p.sku === intent.sku),
+    product,
     requestedPrice: intent.requestedPrice,
     qty: intent.quantity,
     openOffers: open,
@@ -234,6 +243,23 @@ async function send(
     competitorPrice,
   });
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
+  // LLM ได้แค่ตัวเลขที่ Deal Engine คิดแล้ว + ชื่อลูกค้า (ไม่ได้ข้อความดิบ) · ตรวจไม่ผ่านใช้ template
+  const reply =
+    result.kind === "offers"
+      ? await writeOffersReply(deps, template, {
+          buyerName,
+          ownerName: storefront.ownerName,
+          product,
+          requestedPrice: intent.requestedPrice,
+          qty: intent.quantity,
+          // GPT ดึงราคาร้านอื่นจากข้อความก่อนหน้ามาได้ — พูดซ้ำทุกข้อความแปลก ให้พูดเฉพาะตอนลูกค้าพูดในข้อความนี้
+          competitorPrice: competitorPrice !== null && saysNumber(text, competitorPrice) ? competitorPrice : null,
+          offers: result.offers.map((p) => p.offer),
+        })
+      : template;
+  console.info(
+    `[chat] parse ${parsedAt - started} ms (${parsedBy}) · engine ${engineAt - parsedAt} ms · write ${Date.now() - engineAt} ms`,
+  );
 
   try {
     return await commit(deps, { ...current, negotiation: result.state }, messages, await prepare(reply), priced);
@@ -242,6 +268,18 @@ async function send(
     await Promise.resolve(saveCounters(store, { ...current, negotiation: result.state }, current.negotiation)).catch(() => false);
     throw err;
   }
+}
+
+/** แทนข้อความแรกของ AI (ที่มากับการ์ดข้อเสนอ) ด้วยข้อความที่ LLM เรียบเรียงและผ่านการตรวจตัวเลขแล้ว */
+async function writeOffersReply(deps: PipelineDeps, reply: Reply, facts: ReplyFacts): Promise<Reply> {
+  const index = reply.messages.findIndex((m) => m.type === "ai_text");
+  const draft = reply.messages[index];
+  if (draft?.type !== "ai_text") return reply;
+  const written = await writeOffersText(deps.replyWriter ?? null, facts, draft.text, { timeoutMs: deps.replyTimeoutMs });
+  if (written.reason) console.warn(`[chat] ข้อความ LLM ไม่ผ่าน (${written.reason}) ใช้ template แทน`);
+  const messages = [...reply.messages];
+  messages[index] = { ...draft, text: written.text };
+  return { ...reply, messages };
 }
 
 /** ตัวนับไม่เปลี่ยนก็ไม่ต้องเขียน */
