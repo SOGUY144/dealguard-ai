@@ -181,7 +181,9 @@ describe("ActiveChats (แชตที่กำลังคุย)", () => {
         chats={[
           { chatId: "c1", buyerName: "คุณนก", status: "ai", preview: "ขอ 125 ได้ไหม", at: "2026-10-24T03:00:00Z" },
           { chatId: "c2", buyerName: "ลูกค้า 2", status: "owner", preview: "ส่งเรื่องให้เถ้าแก่ · ขอคืนเงิน", at: "2026-10-24T02:00:00Z" },
+          { chatId: "c3", buyerName: "คุณเก่า", status: "ordered", preview: "ปิดดีล ข้อ A · ฿125,000", at: "2026-10-22T02:00:00Z" },
         ]}
+        now={new Date("2026-10-24T05:00:00Z")}
       />,
     );
     const first = screen.getByRole("link", { name: /คุณนก/ });
@@ -189,11 +191,14 @@ describe("ActiveChats (แชตที่กำลังคุย)", () => {
     expect(within(first).getByText("AI กำลังคุย")).toBeInTheDocument();
     expect(within(first).getByText("10:00")).toBeInTheDocument();
     expect(within(screen.getByRole("link", { name: /ลูกค้า 2/ })).getByText("เถ้าแก่ดูแล")).toBeInTheDocument();
+    // แชตเก่ากว่าวันนี้ก็อยู่ในรายการ — บอกเป็นวันที่แทนเวลา
+    expect(within(screen.getByRole("link", { name: /คุณเก่า/ })).getByText("22 ต.ค.")).toBeInTheDocument();
+    expect(screen.getByText("3 แชต")).toBeInTheDocument();
   });
 
   it("ยังไม่มีแชต → บอกว่าไม่มี", () => {
     render(<ActiveChats chats={[]} />);
-    expect(screen.getByText("ยังไม่มีแชตวันนี้")).toBeInTheDocument();
+    expect(screen.getByText("ยังไม่มีแชต")).toBeInTheDocument();
   });
 });
 

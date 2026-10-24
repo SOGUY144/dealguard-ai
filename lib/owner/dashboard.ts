@@ -28,8 +28,8 @@ const DEAL_HISTORY_LIMIT = 1000;
 const ESCALATION_HISTORY_LIMIT = 200;
 /** ออเดอร์รอยืนยันที่การแจ้งเตือนอ่านได้มากสุด */
 const PENDING_ORDER_LIMIT = 20;
-/** แชตที่กำลังคุยที่แสดงในหน้าภาพรวม */
-const ACTIVE_CHAT_LIMIT = 8;
+/** แชตที่แสดงในกล่อง "แชตที่กำลังคุย" (ทุกแชต ล่าสุดก่อน เลื่อนดูในกล่อง) */
+const ACTIVE_CHAT_LIMIT = 30;
 /** ข้อความล่าสุดต่อแชตที่ใช้ดูสถานะ/ตัวอย่างข้อความ */
 const PREVIEW_MESSAGES = 4;
 
@@ -40,7 +40,7 @@ export type OwnerData = {
   openCount: number;
   /** ออเดอร์ที่อ่าน margin ไม่ได้ (ข้อมูลไม่ครบ) — ควรเป็น 0 เสมอ */
   incompleteDeals: number;
-  /** แชตของลูกค้าที่มีความเคลื่อนไหววันนี้ ล่าสุดก่อน */
+  /** แชตของลูกค้าทั้งหมด (ไม่ใช่แค่วันนี้) ล่าสุดก่อน */
   activeChats: ActiveChat[];
 };
 
@@ -61,7 +61,7 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
   return {
     deals,
     incompleteDeals,
-    activeChats: await readActiveChats(db, since),
+    activeChats: await readActiveChats(db),
     openCount: escalations.count ?? escalations.data.length,
     escalations: (escalations.data as Row[]).map((e) => ({
       id: String(e.id),
@@ -191,13 +191,12 @@ export async function countOpenEscalations(db: SupabaseClient, _now = new Date()
   return count ?? 0;
 }
 
-/** แชตของลูกค้า (ไม่รวมบัญชีเถ้าแก่) ที่มีความเคลื่อนไหวตั้งแต่ since — สถานะ + ข้อความล่าสุด */
-async function readActiveChats(db: SupabaseClient, since: string): Promise<ActiveChat[]> {
+/** แชตของลูกค้า (ไม่รวมบัญชีเถ้าแก่) ล่าสุดก่อน — สถานะ + ข้อความล่าสุด */
+async function readActiveChats(db: SupabaseClient): Promise<ActiveChat[]> {
   const chats = await db
     .from("chats")
     .select("id, mode, updated_at, profiles!inner(display_name, role)")
     .eq("profiles.role", "buyer")
-    .gte("updated_at", since)
     .order("updated_at", { ascending: false })
     .limit(ACTIVE_CHAT_LIMIT);
   if (chats.error) throw new Error(`[owner] อ่านแชตที่กำลังคุย: ${chats.error.message}`);
