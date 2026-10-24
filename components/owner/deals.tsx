@@ -45,7 +45,7 @@ export function Deals({ deals, markPaid, confirm }: { deals: OwnerDeal[]; markPa
 
       {deals.length === 0 ? (
         <p className="glass rounded-[22px] px-4 py-6 text-center text-sm text-muted md:bg-transparent md:shadow-none md:[backdrop-filter:none] md:border-0">
-          ยังไม่มีดีลที่ปิดได้วันนี้
+          ยังไม่มีดีลที่ได้รับเงินวันนี้
         </p>
       ) : (
         <>

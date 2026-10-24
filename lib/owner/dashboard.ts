@@ -12,6 +12,7 @@ import {
   type ActiveChat,
   type EscalationEntry,
   type OwnerDeal,
+  type OpenOrders,
   type OwnerEscalation,
   type PendingOrder,
 } from "./summary";
@@ -42,13 +43,17 @@ export type OwnerData = {
   incompleteDeals: number;
   /** แชตของลูกค้าที่มีความเคลื่อนไหววันนี้ ล่าสุดก่อน */
   activeChats: ActiveChat[];
+  /** ออเดอร์ที่ลูกค้าปิดดีลแล้วแต่ร้านยังไม่ได้รับเงิน (ทุกวัน) — ยังไม่นับเป็นรายได้ */
+  openOrders: OpenOrders;
 };
 
 export async function readOwnerData(db: SupabaseClient, now = new Date()): Promise<OwnerData> {
   const since = bangkokDayStart(now).toISOString();
   // เรื่องที่ยังไม่ปิด ทุกวัน (รีวิวรอบ 3): เรื่องคืนเงินตอน 23:40 ต้องยังเตือนเช้าวันถัดไป จนกว่าเถ้าแก่จะปิดเรื่อง
-  const [{ deals, incompleteDeals }, escalations] = await Promise.all([
-    readDeals(db, since),
+  // รายได้นับเมื่อเถ้าแก่กด "ได้รับเงินแล้ว" (ทีมขอ 25 ต.ค. 2569) — ลูกค้ากดยืนยันอย่างเดียวยังไม่เข้าหน้านี้
+  const [{ deals, incompleteDeals }, openOrders, escalations] = await Promise.all([
+    queryDeals(db, { paidSince: since }),
+    readOpenOrders(db),
     db
       .from("escalations")
       .select("id, chat_id, kind, brief, created_at", { count: "exact" })
@@ -61,6 +66,7 @@ export async function readOwnerData(db: SupabaseClient, now = new Date()): Promi
   return {
     deals,
     incompleteDeals,
+    openOrders,
     activeChats: await readActiveChats(db, since),
     openCount: escalations.count ?? escalations.data.length,
     escalations: (escalations.data as Row[]).map((e) => ({
@@ -114,9 +120,30 @@ export async function readPendingOrders(db: SupabaseClient): Promise<PendingOrde
   });
 }
 
+/** ออเดอร์ของลูกค้าที่ยังไม่ได้รับเงิน (ทุกวัน) แยกรอยืนยัน / รอชำระ — หน้าภาพรวมบอกว่ามีงานค้างที่แท็บออเดอร์ */
+async function readOpenOrders(db: SupabaseClient): Promise<OpenOrders> {
+  const res = await db
+    .from("orders")
+    .select("confirmed_at, profiles!inner(role), offers(total)")
+    .eq("profiles.role", "buyer")
+    .is("paid_at", null)
+    .limit(DEAL_HISTORY_LIMIT);
+  if (res.error) throw new Error(`[owner] อ่านออเดอร์ที่รอ: ${res.error.message}`);
+  const open: OpenOrders = { pending: 0, awaiting: 0, awaitingTotal: 0 };
+  for (const row of res.data as Row[]) {
+    if (!row.confirmed_at) {
+      open.pending += 1;
+      continue;
+    }
+    open.awaiting += 1;
+    open.awaitingTotal += Number(one(row.offers)?.total ?? 0);
+  }
+  return open;
+}
+
 async function queryDeals(
   db: SupabaseClient,
-  where: { since: string | null } | { unpaidOrPaidSince: string },
+  where: { since: string | null } | { paidSince: string } | { unpaidOrPaidSince: string },
 ): Promise<{ deals: OwnerDeal[]; incompleteDeals: number }> {
   let query = db
     .from("orders")
@@ -126,6 +153,7 @@ async function queryDeals(
     )
     .eq("profiles.role", "buyer");
   if ("unpaidOrPaidSince" in where) query = query.or(`paid_at.is.null,paid_at.gte.${where.unpaidOrPaidSince}`);
+  else if ("paidSince" in where) query = query.gte("paid_at", where.paidSince);
   else if (where.since) query = query.gte("created_at", where.since);
   // ล่าสุดก่อนแล้วกลับลำดับ — เกินเพดานแล้วตัดของเก่าทิ้ง ไม่ใช่ตัดของใหม่
   const orders = await query.order("created_at", { ascending: false }).limit(DEAL_HISTORY_LIMIT);

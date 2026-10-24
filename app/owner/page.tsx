@@ -7,6 +7,7 @@ import { ActiveChats } from "@/components/owner/active-chats";
 import { Deals } from "@/components/owner/deals";
 import { Escalations } from "@/components/owner/escalations";
 import { OwnerBottomNav, OwnerSidebar } from "@/components/owner/owner-nav";
+import { OpenOrdersNote } from "@/components/owner/open-orders-note";
 import { OwnerLive } from "@/components/owner/owner-live";
 import { ProfitChart } from "@/components/owner/profit-chart";
 import { StatTiles } from "@/components/owner/stat-tiles";
@@ -43,7 +44,7 @@ async function OwnerDashboard() {
   const owner = await requireOwner();
   const now = new Date();
   // อ่านด้วยสิทธิ์ของ owner (RLS) ไม่ใช้ service role — ถ้า role ผิด ตัวเลขหลังบ้านจะไม่ออกเลย
-  const { deals, escalations, openCount, incompleteDeals, activeChats } = await readOwnerData(
+  const { deals, escalations, openCount, incompleteDeals, activeChats, openOrders } = await readOwnerData(
     await createSupabaseServerClient(),
     now,
   );
@@ -113,8 +114,10 @@ async function OwnerDashboard() {
 
           {/* มือถือเรียง: สรุป → รอตัดสิน → กราฟ → ดีล · คอม: เรื่องรอตัดสินอยู่คอลัมน์ขวา */}
           <div className="grid gap-[22px] md:grid-cols-[minmax(0,1fr)_300px] md:items-start">
-            <div className="md:col-start-1">
+            <div className="flex flex-col gap-3 md:col-start-1">
               <StatTiles totals={totals} />
+              {/* ลูกค้าปิดดีลแล้วแต่ยังไม่จ่าย ยังไม่นับในตัวเลขด้านบน */}
+              <OpenOrdersNote openOrders={openOrders} />
             </div>
             <div className="flex flex-col gap-[22px] md:col-start-2 md:row-span-3 md:row-start-1">
               <Escalations escalations={escalations} openCount={openCount} ownerName={storefront.ownerName} />

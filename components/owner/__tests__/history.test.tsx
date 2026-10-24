@@ -23,10 +23,15 @@ const deal = (id: string, at: string, letter: 0 | 1): OwnerDeal => ({
 describe("DealHistory (ดีลทั้งหมด)", () => {
   const deals = [deal("a", "2026-10-23T02:00:00Z", 0), deal("b", "2026-10-24T03:00:00Z", 1)];
 
-  it("สรุปยอดของช่วงที่เลือก + แยกตามวัน (ใหม่ก่อน) + ลิงก์ไปแชตของดีล", () => {
-    render(<DealHistory deals={deals} range="all" />);
-    expect(screen.getByText("฿31,332")).toBeInTheDocument();
-    expect(screen.getByText("฿330,000")).toBeInTheDocument();
+  it("สรุปยอดนับเฉพาะดีลที่ได้รับเงินแล้ว · รายการยังแสดงทุกดีล แยกตามวัน (ใหม่ก่อน) + ลิงก์ไปแชตของดีล", () => {
+    // a ได้รับเงินแล้ว (+฿20,000 · ฿195,000) · b ยังไม่จ่าย → ไม่นับในยอด
+    const mixed = [{ ...deals[0], confirmedAt: "2026-10-23T02:10:00Z", paidAt: "2026-10-23T03:00:00Z" }, deals[1]];
+    render(<DealHistory deals={mixed} range="all" />);
+    const summary = screen.getByRole("region", { name: "สรุปทั้งหมด" });
+    expect(within(summary).getByText("฿20,000")).toBeInTheDocument();
+    expect(within(summary).getByText("฿195,000")).toBeInTheDocument();
+    expect(within(summary).getByText("1 ดีล")).toBeInTheDocument();
+    expect(screen.getByText(/ยอดนับเฉพาะออเดอร์ที่ได้รับเงินแล้ว/)).toBeInTheDocument();
     const days = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     expect(days).toEqual(["24 ต.ค. 2569", "23 ต.ค. 2569"]);
     const links = screen.getAllByRole("link", { name: /ดูแชต/ });

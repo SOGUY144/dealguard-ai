@@ -8,6 +8,7 @@ import { ActiveChats } from "../active-chats";
 import { Deals, signedBaht } from "../deals";
 import { Escalations } from "../escalations";
 import { PendingCountContext } from "../order-alerts";
+import { OpenOrdersNote } from "../open-orders-note";
 import { OwnerBottomNav, OwnerSidebar } from "../owner-nav";
 import { ProfitChart } from "../profit-chart";
 import { StatTiles } from "../stat-tiles";
@@ -42,7 +43,7 @@ describe("StatTiles", () => {
     expect(screen.getAllByText("฿48,332").length).toBeGreaterThan(0);
     expect(screen.getAllByText("฿475,000").length).toBeGreaterThan(0);
     expect(screen.getAllByText("3 ดีล").length).toBeGreaterThan(0);
-    expect(screen.getByText("จาก 3 ดีลวันนี้")).toBeInTheDocument();
+    expect(screen.getByText("ได้รับเงินแล้ว 3 ดีลวันนี้")).toBeInTheDocument();
   });
 });
 
@@ -80,7 +81,7 @@ describe("Deals", () => {
 
   it("ยังไม่มีดีล → บอกว่ายังไม่มี", () => {
     render(<Deals deals={[]} />);
-    expect(screen.getByText("ยังไม่มีดีลที่ปิดได้วันนี้")).toBeInTheDocument();
+    expect(screen.getByText("ยังไม่มีดีลที่ได้รับเงินวันนี้")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -123,6 +124,21 @@ describe("Escalations", () => {
   it("ไม่มีเรื่องรอ → บอกว่าไม่มี", () => {
     render(<Escalations escalations={[]} openCount={0} ownerName="เฮียชัย" />);
     expect(screen.getByText("ไม่มีเรื่องที่รอตัดสิน")).toBeInTheDocument();
+  });
+});
+
+describe("OpenOrdersNote — ออเดอร์ที่ยังไม่ได้รับเงิน (ยังไม่นับเป็นรายได้)", () => {
+  it("บอกจำนวนรอยืนยัน / รอชำระ พร้อมยอดที่รอ และพาไปหน้าออเดอร์", () => {
+    render(<OpenOrdersNote openOrders={{ pending: 1, awaiting: 2, awaitingTotal: 250_000 }} />);
+    const note = screen.getByRole("region", { name: "ออเดอร์ที่ยังไม่ได้รับเงิน" });
+    expect(note).toHaveTextContent("รอยืนยัน 1 · รอชำระ 2 (฿250,000)");
+    expect(note).toHaveTextContent("นับเป็นรายได้เมื่อได้รับเงินแล้ว");
+    expect(within(note).getByRole("link", { name: "ไปหน้าออเดอร์" })).toHaveAttribute("href", "/owner/orders");
+  });
+
+  it("ไม่มีออเดอร์ค้าง → ไม่แสดง", () => {
+    const { container } = render(<OpenOrdersNote openOrders={{ pending: 0, awaiting: 0, awaitingTotal: 0 }} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });
 

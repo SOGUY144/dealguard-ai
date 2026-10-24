@@ -25,6 +25,9 @@ export type OwnerDeal = {
 /** ลูกค้าปิดดีลแล้ว รอเถ้าแก่ยืนยัน — การแจ้งเตือนบนจอเถ้าแก่ (ไม่มีตัวเลขหลังบ้าน) */
 export type PendingOrder = { id: string; chatId: string; at: string; buyerName: string; productName: string; offer: Offer };
 
+/** ออเดอร์ที่ลูกค้าปิดดีลแล้วแต่ร้านยังไม่ได้รับเงิน (ทุกวัน) — ยังไม่นับเป็นรายได้ในหน้าภาพรวม */
+export type OpenOrders = { pending: number; awaiting: number; awaitingTotal: number };
+
 /** รอยืนยัน → (เถ้าแก่กดยืนยันออเดอร์) รอชำระ → (กดได้รับเงินแล้ว) ชำระแล้ว */
 export type OrderStatus = "pending" | "awaiting_payment" | "paid";
 

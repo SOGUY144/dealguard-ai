@@ -7,6 +7,7 @@ import type { ChatMessageOf } from "@/lib/chat/types";
 import { handleAction, type PipelineDeps } from "@/lib/chat-server/pipeline";
 import { SupabaseChatStore } from "@/lib/chat-server/supabase-store";
 import { countOpenEscalations, readOwnerData } from "@/lib/owner/dashboard";
+import { setOrderPaid } from "@/lib/owner/payments";
 import { summarize } from "@/lib/owner/summary";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -65,7 +66,14 @@ afterAll(async () => {
 });
 
 describe("readOwnerData", () => {
-  it("owner เห็นดีลวันนี้พร้อมกำไรที่รักษาไว้ตามสูตร SKILL (ข้อ A = +฿20,000)", async () => {
+  it("ลูกค้ากดยืนยันแล้ว แต่ร้านยังไม่ได้รับเงิน → ยังไม่นับเป็นรายได้ในหน้าภาพรวม · นับเป็นออเดอร์ที่รออยู่", async () => {
+    const { deals, openOrders } = await readOwnerData(owner.client);
+    expect(deals.some((d) => d.id === orderId)).toBe(false);
+    expect(openOrders.pending).toBeGreaterThanOrEqual(1);
+  });
+
+  it("เถ้าแก่กดได้รับเงินแล้ว → ดีลเข้าหน้าภาพรวมพร้อมกำไรที่รักษาไว้ตามสูตร SKILL (ข้อ A = +฿20,000)", async () => {
+    await setOrderPaid(admin, orderId, true);
     const { deals } = await readOwnerData(owner.client);
     const mine = deals.find((d) => d.id === orderId)!;
     expect(mine).toMatchObject({
@@ -123,7 +131,7 @@ describe("readOwnerData", () => {
     expect(await countOpenEscalations(owner.client, tomorrow)).toBe(later.openCount);
   });
 
-  it("ออเดอร์ก่อนวันนี้ (เวลาไทย) ไม่นับ", async () => {
+  it("ได้รับเงินก่อนวันนี้ (เวลาไทย) ไม่นับเป็นรายได้วันนี้", async () => {
     const tomorrow = new Date(Date.now() + 36 * 60 * 60 * 1000);
     const { deals } = await readOwnerData(owner.client, tomorrow);
     expect(deals.find((d) => d.id === orderId)).toBeUndefined();

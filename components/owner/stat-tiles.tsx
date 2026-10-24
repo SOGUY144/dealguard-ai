@@ -50,7 +50,7 @@ export function StatTiles({ totals }: { totals: OwnerTotals }) {
           }
           label="ยอดขายที่ AI ปิดได้"
           value={formatBaht(totals.revenueTotal)}
-          note={`จาก ${deals}วันนี้`}
+          note={`ได้รับเงินแล้ว ${deals}วันนี้`}
         />
         <Tile
           icon={

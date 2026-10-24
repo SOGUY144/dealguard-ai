@@ -25,7 +25,7 @@ export default function OrderPage({ params }: PageProps<"/order/[id]">) {
 
 async function Order({ params }: { params: PageProps<"/order/[id]">["params"] }) {
   const { id } = await params;
-  await requireUser(`/order/${encodeURIComponent(id)}`);
+  const user = await requireUser(`/order/${encodeURIComponent(id)}`);
   // ออเดอร์จริงอ่านด้วยสิทธิ์ของผู้ใช้ (RLS) — ลูกค้าเปิดออเดอร์ของคนอื่นได้ "ไม่พบ"
   const mock = getMockOrder(id);
   const order = mock ?? (await readOrder(await createSupabaseServerClient(), id));
@@ -34,7 +34,13 @@ async function Order({ params }: { params: PageProps<"/order/[id]">["params"] })
     <>
       {/* ร้านกด "ได้รับเงินแล้ว" → ใบสรุปเปลี่ยนเอง (ออเดอร์เดโมไม่มีในฐานข้อมูล ไม่ต้องฟัง) */}
       {!mock && <OrderLive orderId={order.id} />}
-      <OrderReceipt order={order} storefront={storefront} payment={await paymentFor(order)} />
+      {/* เถ้าแก่เปิดจากแท็บออเดอร์ → ปุ่มกลับพาไปหน้าออเดอร์ */}
+      <OrderReceipt
+        order={order}
+        storefront={storefront}
+        payment={await paymentFor(order)}
+        viewer={user.role === "owner" ? "owner" : "buyer"}
+      />
     </>
   );
 }

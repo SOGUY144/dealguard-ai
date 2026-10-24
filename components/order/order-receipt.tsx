@@ -7,22 +7,32 @@ import type { Storefront } from "@/lib/chat/types";
 import { formatBaht, formatClock, formatCredit, formatQty } from "@/lib/format";
 import { PaymentCard, type PaymentView } from "./payment-card";
 
-/** payment ไม่ใส่ = ไม่มีส่วนชำระเงิน (เช่น test เดิม) */
-type Props = { order: OrderView; storefront: Storefront; payment?: PaymentView };
+/**
+ * payment ไม่ใส่ = ไม่มีส่วนชำระเงิน (เช่น test เดิม)
+ * viewer = owner: เถ้าแก่เปิดจากแท็บออเดอร์ ("ใบสรุป / QR") — ปุ่มกลับพาไปหน้าออเดอร์ ไม่ใช่หน้าแชต (เถ้าแก่เคยงง)
+ */
+type Props = { order: OrderView; storefront: Storefront; payment?: PaymentView; viewer?: "buyer" | "owner" };
 
 /** ใบสรุปออเดอร์เต็มจอ (Mobile-Order) — บนคอมจัดกลางกว้างไม่เกิน 480px */
-export function OrderReceipt({ order, storefront, payment }: Props) {
+export function OrderReceipt({ order, storefront, payment, viewer = "buyer" }: Props) {
   const { offer } = order;
+  const owner = viewer === "owner";
+  const back = owner ? { href: "/owner/orders", label: "กลับไปหน้าออเดอร์" } : { href: "/", label: "กลับไปแชต" };
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col">
       <header className="glass-pill mx-3 mt-3 flex items-center gap-2.5 py-2 pr-4 pl-2">
-        <Link href="/" aria-label="กลับไปแชต" className={buttonClass("white", "size-11 p-0")}>
+        <Link href={back.href} aria-label={back.label} className={buttonClass("white", "size-11 p-0")}>
           <ArrowLeft aria-hidden="true" size={19} />
         </Link>
         <h1 className="text-base font-semibold">สรุปออเดอร์</h1>
       </header>
 
       <main className="flex flex-1 flex-col gap-4 px-4 py-[18px]">
+        {owner && (
+          <p role="note" className="rounded-[14px] bg-accent-tint px-3.5 py-2.5 text-center text-[13px] text-accent-ink">
+            {'หน้านี้คือใบสรุปที่ลูกค้าเห็น · ลูกค้าเปิดได้จากปุ่ม "ดูใบสรุปออเดอร์" ในแชต'}
+          </p>
+        )}
         <div className="flex flex-col items-center gap-2.5 py-1.5 text-center">
           <span
             aria-hidden="true"
@@ -65,10 +75,11 @@ export function OrderReceipt({ order, storefront, payment }: Props) {
       </main>
 
       <div className="flex flex-col gap-2 px-4 pt-3 pb-5">
-        <Link href="/" className={buttonClass("primary", "h-[52px] text-base")}>
-          กลับไปแชต
+        <Link href={back.href} className={buttonClass("primary", "h-[52px] text-base")}>
+          {back.label}
         </Link>
-        <TalkToOwnerButton ownerName={storefront.ownerName} from={`/order/${order.id}`} />
+        {/* เถ้าแก่ไม่ต้องส่งเรื่องหาตัวเอง */}
+        {!owner && <TalkToOwnerButton ownerName={storefront.ownerName} from={`/order/${order.id}`} />}
       </div>
     </div>
   );

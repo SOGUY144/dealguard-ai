@@ -57,6 +57,18 @@ describe("OrderReceipt (Mobile-Order)", () => {
   });
 });
 
+describe("OrderReceipt — เถ้าแก่เปิดดูใบสรุป (หน้าเดียวกับที่ลูกค้าเห็น)", () => {
+  it("ปุ่มกลับพาไปหน้าออเดอร์ ไม่ใช่หน้าแชต · ไม่มีปุ่มคุยกับเถ้าแก่ · บอกว่าเป็นหน้าที่ลูกค้าเห็น", () => {
+    render(<OrderReceipt order={getMockOrder("demo-B")!} storefront={storefront} viewer="owner" />);
+    const back = screen.getAllByRole("link", { name: "กลับไปหน้าออเดอร์" });
+    expect(back).toHaveLength(2);
+    for (const link of back) expect(link).toHaveAttribute("href", "/owner/orders");
+    expect(screen.queryByRole("link", { name: "กลับไปแชต" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "คุยกับเฮียชัยโดยตรง" })).not.toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("หน้านี้คือใบสรุปที่ลูกค้าเห็น");
+  });
+});
+
 describe("OrderReceipt — ส่วนชำระเงิน", () => {
   const order = {
     id: "o-1",

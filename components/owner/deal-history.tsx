@@ -22,7 +22,8 @@ export function DealHistory({
   markPaid?: MarkPaid;
   confirm?: ConfirmOrder;
 }) {
-  const totals = summarize(deals);
+  // ยอดนับเมื่อได้รับเงินแล้ว (เหมือนหน้าภาพรวม) · รายการยังแสดงทุกดีลพร้อมสถานะ
+  const totals = summarize(deals.filter((d) => d.paidAt));
   const groups = groupDealsByDay(deals);
   return (
     <div className="flex flex-col gap-[22px]">
@@ -61,6 +62,12 @@ export function DealHistory({
           </div>
         ))}
       </section>
+      <p className="-mt-3 px-1 text-xs text-muted">
+        ยอดนับเฉพาะออเดอร์ที่ได้รับเงินแล้ว · ออเดอร์ที่ยังไม่จ่ายดูได้ที่{" "}
+        <Link href="/owner/orders" className="font-medium text-accent-ink hover:underline">
+          หน้าออเดอร์
+        </Link>
+      </p>
 
       {groups.length === 0 ? (
         <p className="glass rounded-[22px] px-4 py-8 text-center text-sm text-muted">ยังไม่มีดีลที่ปิดได้ในช่วงนี้</p>
