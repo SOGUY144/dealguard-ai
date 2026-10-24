@@ -57,20 +57,27 @@ export function OrderAlertsProvider({ children, load, confirm, connect = connect
     ].slice(0, MAX_ALERTS));
   }, []);
 
+  // load เป็น server action ที่ layout ส่งมา — ได้ตัวใหม่ทุกครั้งที่หน้าได้ข้อมูลจาก server (Next render ใหม่จาก root
+  // หลังทุก server action รวม load เอง) · ถ้าดึงซ้ำทุกครั้งที่ได้ตัวใหม่ จะวนเรียกไม่หยุด (เจอบนเว็บจริง ~3 ครั้ง/วินาที)
+  // เก็บตัวล่าสุดไว้ใช้ตอนมีการเปลี่ยนแปลง แล้วดึงเองแค่ตอนเปิดหน้า
+  const latestLoad = useRef(load);
+  useEffect(() => {
+    latestLoad.current = load;
+  }, [load]);
+
   // ดึงทันทีตอนเปิดหน้า (badge ในเมนู) ไม่ต้องรอ Realtime ต่อติด — ต่อไม่ติดจะได้รอบแรกช้าไปเกือบ 20 วินาที
   useEffect(() => {
     let alive = true;
-    load().then(
+    latestLoad.current().then(
       (list) => alive && apply(list),
       () => {},
     );
     return () => {
       alive = false;
     };
-  }, [load, apply]);
-  useLiveUpdates(connect, () => void load().then(apply, () => {}));
+  }, [apply]);
+  useLiveUpdates(connect, () => void latestLoad.current().then(apply, () => {}));
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
-
   const update = (id: string, patch: Partial<Alert>) =>
     setAlerts((current) => current.map((a) => (a.order.id === id ? { ...a, ...patch } : a)));
   const dismiss = (id: string) => setAlerts((current) => current.filter((a) => a.order.id !== id));
@@ -84,7 +91,9 @@ export function OrderAlertsProvider({ children, load, confirm, connect = connect
       setCount((c) => Math.max(0, c - 1));
       router.refresh();
       timers.current.push(setTimeout(() => dismiss(id), DONE_MS));
-    } catch {
+    } catch (err) {
+      // ไม่ถึงโค้ดฝั่ง server (ฝั่งนั้นลง log เอง) — เก็บสาเหตุไว้ใน console ให้ตามได้
+      console.error("[orders]", err);
       update(id, { state: "new", error: "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง" });
     }
   }

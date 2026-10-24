@@ -39,7 +39,9 @@ export function OrderActions({ orderId, buyerName, confirmedAt: initial, paidAt,
       if (!result.ok) return setError(result.error);
       setConfirmedAt(result.confirmedAt);
       router.refresh();
-    } catch {
+    } catch (err) {
+      // ไม่ถึงโค้ดฝั่ง server (ฝั่งนั้นลง log เอง) — เก็บสาเหตุไว้ใน console ให้ตามได้
+      console.error("[orders]", err);
       setError("บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
     } finally {
       setBusy(false);
