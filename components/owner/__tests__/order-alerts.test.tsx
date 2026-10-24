@@ -105,6 +105,26 @@ describe("OrderAlerts — ลูกค้าปิดดีล → เด้ง�
     await waitFor(() => expect(within(alerts()).queryByRole("article")).not.toBeInTheDocument());
   });
 
+  it("หน้าได้ข้อมูลใหม่จาก server (layout ส่ง load ตัวใหม่) → ไม่ดึงซ้ำเอง · การเปลี่ยนแปลงครั้งถัดไปใช้ตัวใหม่", async () => {
+    // Next render ใหม่จาก root หลังทุก server action — ถ้าดึงซ้ำทุกครั้งที่ได้ load ตัวใหม่ จะวนเรียกไม่หยุด (เจอบนเว็บจริง)
+    const ui = (fn: typeof load) => (
+      <OrderAlertsProvider load={fn} confirm={confirm} connect={connect}>
+        <Count />
+      </OrderAlertsProvider>
+    );
+    const { rerender } = render(ui(load));
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 400));
+    const before = load.mock.calls.length;
+    const fresh = vi.fn(async () => pending);
+    rerender(ui(fresh));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fresh).not.toHaveBeenCalled();
+    expect(load.mock.calls.length).toBe(before);
+    await act(async () => fire());
+    await waitFor(() => expect(fresh).toHaveBeenCalledTimes(1));
+  });
+
   it("ยืนยันไม่สำเร็จ → บอกในการแจ้งเตือน กดใหม่ได้", async () => {
     confirm.mockResolvedValueOnce({ ok: false, error: "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง" } as never);
     setup();
