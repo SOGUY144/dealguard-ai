@@ -1,5 +1,6 @@
 // สิ่งที่หน้าแชตเถ้าแก่ (/owner/chats/[id]) ใช้วาด — ไม่มีตัวเลขหลังบ้าน (ต้นทุน/margin) อยู่ในนี้
 import type { HandoffKind } from "@/lib/chat/replies";
+import { lastOffers } from "@/lib/chat/suggestions";
 import type { ChatMessage } from "@/lib/chat/types";
 
 export type OwnerChatView = {
@@ -16,4 +17,36 @@ export type OwnerChatView = {
 export function quickReplies(kind: HandoffKind | null): string[] {
   if (kind === "refund" || kind === "complaint") return ["ขอรูปของที่เสียหน่อยครับ", "เดี๋ยวเฮียโทรกลับครับ"];
   return ["เดี๋ยวเฮียโทรกลับครับ"];
+}
+
+/**
+ * สินค้าที่เถ้าแก่อนุมัติราคาเองได้ — มีต้นทุน/ราคาพื้น ส่งให้หน้าแชตเถ้าแก่เท่านั้น (requireOwner)
+ * แยกจาก OwnerChatView ซึ่งไม่มีตัวเลขหลังบ้าน
+ */
+export type ApprovalProduct = { sku: string; name: string; listPrice: number; unitCost: number; floorPrice: number };
+
+/** ค่าเริ่มต้นของฟอร์มอนุมัติราคา: สินค้า/จำนวนจากการ์ดข้อเสนอล่าสุด (จำนวนที่ลูกค้าขอ ไม่ใช่จำนวนข้อ "ซื้อเยอะ") */
+export function approvalDefaults(messages: ChatMessage[], products: ApprovalProduct[]): { sku: string; qty: number | null } {
+  const card = lastOffers(messages);
+  const known = (sku: string | undefined) => (sku && products.some((p) => p.sku === sku) ? sku : undefined);
+  if (card && known(card.sku)) {
+    const asked = card.offers.find((o) => o.lever !== "volume") ?? card.offers[0];
+    return { sku: card.sku, qty: asked?.qty ?? null };
+  }
+  const shown = [...messages].reverse().find((m) => m.type === "product_card");
+  return { sku: known(shown?.type === "product_card" ? shown.sku : undefined) ?? products[0]?.sku ?? "", qty: null };
+}
+
+/** ตัวเลขที่เถ้าแก่เห็นก่อนกดอนุมัติ — คิดในเครื่องได้ เพราะเป็นหน้าเถ้าแก่และไม่ได้ใช้ตัดสินราคาจริง (server คิดใหม่) */
+export function approvalPreview(product: ApprovalProduct, price: number, qty: number) {
+  const total = Math.round(price * qty * 100) / 100;
+  const profit = Math.round((price - product.unitCost) * qty * 100) / 100;
+  const cost = product.unitCost * qty;
+  return {
+    total,
+    profit,
+    profitPctOfCost: cost > 0 ? Math.round((profit / cost) * 100) : null,
+    belowFloor: price < product.floorPrice,
+    belowCost: price < product.unitCost,
+  };
 }

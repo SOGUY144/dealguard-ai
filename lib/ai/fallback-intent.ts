@@ -2,6 +2,7 @@
 // ไม่ต้องเก่งเท่า GPT แค่ต้องไม่เดา: หาไม่เจอให้เป็น null แล้วให้ Deal Engine ถามกลับ
 import type { Intent } from "@/lib/deal-engine/types";
 import type { PublicProduct } from "@/lib/chat/types";
+import { rejectedLevers } from "@/lib/deal-engine/rejections";
 import { thaiNumberWordsToDigits } from "./thai-numbers";
 
 export type IntentContext = {
@@ -50,7 +51,9 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
   // "ขอลด 10 บาท" / "ขอ 10%" คือส่วนลดที่ขอ ไม่ใช่ราคาต่อชิ้น — ตัดออกก่อนหาราคา
   const priceText = text
     .replace(/ลด(?:ให้)?\s*\d+(?:\.\d+)?\s*(?:บาท|฿|%)?/g, " ")
-    .replace(/\d+(?:\.\d+)?\s*(?:%|เปอร์เซ็นต์|เปอร์เซ็น)/g, " ");
+    .replace(/\d+(?:\.\d+)?\s*(?:%|เปอร์เซ็นต์|เปอร์เซ็น)/g, " ")
+    // "ขอ 30 วันเหมือนเดิม" คือเครดิต ไม่ใช่ราคา ฿30
+    .replace(/\d+\s*วัน/g, " ");
   const competitorPrice = num(text.match(COMPETITOR)?.[1]);
   const quantity = num(text.match(QTY)?.[1]);
 
@@ -80,7 +83,9 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
                 : "other";
 
   const mentioned = findProduct(text, ctx.products);
-  const credit = text.match(/เครดิต\s*(\d+)\s*วัน/);
+  const credit = text.match(/(?:เครดิต|ขอ)\s*(\d+)\s*วัน/);
+  // "จ่ายสดไม่สะดวก" / "ไม่จ่ายสด" = ไม่เอาจ่ายสด ไม่ใช่ขอจ่ายสด
+  const wantsCash = CASH.test(text) && !rejectedLevers([text]).includes("cash");
 
   // เรื่องคืนเงิน/ร้องเรียน ตัวเลขในประโยคไม่ใช่การสั่งซื้อ
   const dealing = intent === "negotiate_price" || intent === "order";
@@ -89,7 +94,7 @@ export function fallbackIntent(raw: string, ctx: IntentContext): Intent {
     sku: mentioned?.sku ?? ctx.lastSku,
     requestedPrice: dealing ? requestedPrice : null,
     quantity: dealing ? quantity : null,
-    paymentTermsRequestedDays: CASH.test(text) ? 0 : credit ? Number(credit[1]) : null,
+    paymentTermsRequestedDays: wantsCash ? 0 : credit ? Number(credit[1]) : null,
     competitorClaim: competitorPrice !== null ? { mentioned: true, price: competitorPrice } : null,
     buyerName: null,
     injectionSuspected,

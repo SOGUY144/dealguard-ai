@@ -27,6 +27,8 @@ export type ReplyContext = {
   askedDiscount?: boolean;
   /** ถามข้อมูลทั่วไป (SKILL §11.3): asked = ถามข้อมูล · topics = เรื่องที่รู้จัก · answers = ที่เถ้าแก่กรอก */
   info?: { asked: boolean; topics: InfoTopic[]; answers: ShopAnswers };
+  /** ข้อเสนอรอบใหม่หลังลูกค้าบอกว่าไม่เอาบางทาง — ไม่ทวนราคาที่ขอ บอกว่าเหลือกี่ทาง */
+  afterRejection?: boolean;
 };
 
 /**
@@ -106,6 +108,7 @@ const HANDOFF_SUBJECT: Record<EscalationKind, string> = {
   over_value: "ดีลมูลค่าสูง",
   below_floor_3x: "ขอราคาพิเศษ",
   injection: "ส่งต่อให้เจ้าของร้าน",
+  all_rejected: "ขอราคาพิเศษ",
 };
 
 export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
@@ -125,7 +128,11 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
       const qtyText = formatQty(qty ?? offers.find((o) => o.lever !== "volume")?.qty ?? 0);
       const meets = conditionsMeetingAsk(offers, requestedPrice);
       const intro =
-        requestedPrice === null
+        ctx.afterRejection && !meets
+          ? n === 1
+            ? `เข้าใจครับ${buyerName} งั้นเหลือทางนี้ครับ ถ้ายังไม่สะดวก บอกได้เลย เดี๋ยวส่งให้${owner}ดูให้ครับ`
+            : `เข้าใจครับ${buyerName} งั้นยังมีอีก ${n} ทางให้เลือกครับ`
+          : requestedPrice === null
           ? `สวัสดีครับ${buyerName} ${product?.name ?? "สินค้านี้"} ${qtyText} ชิ้น ${owner}มี ${n} ทางให้เลือกครับ`
           : meets
             ? `สวัสดีครับ${buyerName} ราคา ${formatQty(Math.ceil(requestedPrice))} ได้ครับถ้า${meets} มี ${n} ทางให้เลือกครับ`
@@ -209,7 +216,8 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
     case "escalate":
       return {
         messages: [text(escalateText(result.reason, buyerName, owner)), { type: "handoff", subject: HANDOFF_SUBJECT[result.reason] }],
-        handoff: { kind: result.reason, brief: result.brief },
+        // ฐานข้อมูลยังไม่มีประเภท all_rejected → เก็บเป็น "ลูกค้าขอคุยกับคน" (brief บรรทัดแรกบอกเหตุผลจริง)
+        handoff: { kind: result.reason === "all_rejected" ? "buyer_request" : result.reason, brief: result.brief },
       };
   }
 }
@@ -249,6 +257,8 @@ function escalateText(reason: EscalationKind, buyerName: string, owner: string):
       return `ราคานี้ผมให้เองไม่ได้ครับ${buyerName} ผมส่งเรื่องให้${owner}ดูให้แล้วครับ`;
     case "injection":
       return `ผมส่งเรื่องให้${owner}คุยต่อเองครับ`;
+    case "all_rejected":
+      return `รับทราบครับ${buyerName} ราคาที่ขอผมขอส่งให้${owner}ตัดสินเองนะครับ ถ้า${owner}อนุมัติ จะมีการ์ดให้กดยืนยันในแชตนี้ครับ`;
   }
 }
 

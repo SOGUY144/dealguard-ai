@@ -16,7 +16,11 @@ export type BriefContext = {
   value?: number;
   /** offer = ทุกข้อเสนอถูกตัดเพราะยอดรวมเกิน — value คือยอดของข้อที่ถูกที่สุด */
   valueBasis?: "requested" | "list" | "floor" | "offer";
+  /** ทางเลือกที่ลูกค้าปฏิเสธ (all_rejected) */
+  rejected?: ("volume" | "cash" | "bundle")[];
 };
+
+const LEVER_NAME = { volume: "ซื้อเพิ่ม", cash: "จ่ายสด", bundle: "รับของแถม" } as const;
 
 const BASIS_NOTE = { requested: "", list: " (ราคาขาย)", floor: " (คิดที่ราคาพื้น)", offer: "" } as const;
 
@@ -35,7 +39,7 @@ export function buildBrief(reason: EscalationKind, ctx: BriefContext): Brief {
         ctx.valueBasis === "offer"
           ? `ข้อเสนอที่ถูกที่สุดรวม ${formatBaht(ctx.value ?? 0)} เกินเกณฑ์ ${formatBaht(config.escalationDealValue)}`
           : `มูลค่าราว ${formatBaht(ctx.value ?? 0)}${BASIS_NOTE[ctx.valueBasis ?? "requested"]} เกินเกณฑ์ ${formatBaht(config.escalationDealValue)}`,
-        "AI ยังไม่เสนอราคา",
+        decisionLine("AI ยังไม่เสนอราคา", product, qty, price),
       ];
     case "refund":
       return [`${buyerName} ขอคืนเงิน`, quoted, `AI ไม่รับปากเรื่องคืนเงิน รอ${owner}ตัดสิน`];
@@ -45,9 +49,30 @@ export function buildBrief(reason: EscalationKind, ctx: BriefContext): Brief {
       return [
         `${buyerName} ยืนยันขอ${productName}${atPrice} ต่ำกว่าราคาพื้นครบ 3 รอบ`,
         `จำนวน ${formatQty(qty)} ชิ้น`,
-        "AI ยังไม่ลดตาม",
+        decisionLine("AI ยังไม่ลดตาม", product, qty, price),
       ];
     case "injection":
       return [`${buyerName} พยายามหลอกระบบซ้ำ`, quoted, "AI ไม่ทำตามและหยุดเสนอราคา"];
+    case "all_rejected":
+      return [
+        `${buyerName} ไม่รับทุกทางเลือก (${(ctx.rejected ?? []).map((l) => LEVER_NAME[l]).join(" / ")})`,
+        `ขอ${productName} ${formatQty(qty)} ชิ้น${atPrice}`,
+        decisionLine("AI ไม่ลดเพิ่มเอง", product, qty, price),
+      ];
   }
+}
+
+/**
+ * บรรทัดช่วยเถ้าแก่ตัดสิน (หน้าเถ้าแก่เท่านั้น — brief ไม่ถูกส่งให้ลูกค้า):
+ * ถ้ายอมราคาที่ลูกค้าขอ ร้านได้กำไรเท่าไหร่ และอยู่เหนือราคาพื้นไหม · ไม่รู้ราคา → บอกกำไรที่ราคาขาย
+ */
+export function decisionLine(status: string, product: Product | undefined, qty: number, price: number | null): string {
+  if (!product || !(qty > 0)) return status;
+  if (price === null) {
+    return `${status} · ขายราคาปกติ ${formatBaht(product.listPrice)} ได้กำไร ${formatBaht((product.listPrice - product.unitCost) * qty)}`;
+  }
+  const profit = (price - product.unitCost) * qty;
+  const verdict =
+    price >= product.floorPrice ? "สูงกว่าราคาพื้น ยอมได้" : profit >= 0 ? "ต่ำกว่าราคาพื้น ไม่แนะนำ" : "ขาดทุน ไม่แนะนำ";
+  return `${status} · ถ้ายอม ${formatBaht(price)} ${profit >= 0 ? "ได้กำไร" : "ขาดทุน"} ${formatBaht(Math.abs(profit))} (${verdict})`;
 }

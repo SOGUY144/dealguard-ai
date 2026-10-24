@@ -163,4 +163,15 @@ describe("รีวิวรอบ 3 — ตัวแยกสำรองอ่
     expect(parse("ใช้ไม่ได้กับ iPhone ใช่ไหม").intent).not.toBe("complaint");
     expect(parse("สายชาร์จใช้ไม่ได้ครับ เสีย 20 เส้น").intent).toBe("complaint");
   });
+
+  it('"ขอ 30 วันเหมือนเดิม" = ขอเครดิต 30 วัน ไม่ใช่ขอราคา ฿30', () => {
+    expect(parse("ขอ 30 วันเหมือนเดิม")).toMatchObject({ requestedPrice: null, paymentTermsRequestedDays: 30 });
+    expect(parse("ขอเครดิต 30 วันนะครับ").paymentTermsRequestedDays).toBe(30);
+  });
+
+  it('"จ่ายสดไม่สะดวก" / "ไม่จ่ายสด" ไม่ใช่การขอจ่ายสด', () => {
+    expect(parse("จ่ายสดไม่สะดวก").paymentTermsRequestedDays).toBeNull();
+    expect(parse("ไม่จ่ายสด ขอ 125 เท่านั้น")).toMatchObject({ requestedPrice: 125, paymentTermsRequestedDays: null });
+    expect(parse("จ่ายสดได้ไหม 1000 ชิ้น").paymentTermsRequestedDays).toBe(0);
+  });
 });

@@ -58,6 +58,8 @@ const LABEL: Record<HandoffKind, string> = {
   below_floor_3x: "ขอต่ำกว่าราคาพื้น 3 รอบ",
   injection: "พยายามหลอกระบบ",
   buyer_request: "ลูกค้าขอคุยกับคน",
+  // เก็บในฐานข้อมูลเป็น buyer_request — มีไว้ให้ type ครบ
+  all_rejected: "ลูกค้าไม่รับทุกทางเลือก",
 };
 
 export function escalationLabel(kind: HandoffKind): string {

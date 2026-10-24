@@ -1,20 +1,26 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CircleCheck, LoaderCircle, Mic, Sparkles, Square, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, BadgeCheck, CircleCheck, LoaderCircle, Mic, Sparkles, Square, User } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { type ConnectLive, useLiveUpdates } from "@/components/live/use-live-updates";
 import { buttonClass } from "@/components/ui/button";
+import { OWNER_CREDIT_CHOICES } from "@/lib/chat/owner-approval";
 import type { ChatMessage } from "@/lib/chat/types";
 import { cn } from "@/lib/cn";
-import { formatBaht, formatClock, formatDayLabel, formatQty } from "@/lib/format";
-import { quickReplies, type OwnerChatView } from "@/lib/owner/chat-view";
+import { formatBaht, formatClock, formatCredit, formatDayLabel, formatQty } from "@/lib/format";
+import { approvalDefaults, approvalPreview, quickReplies, type ApprovalProduct, type OwnerChatView } from "@/lib/owner/chat-view";
 import { escalationLabel, ownerInitials } from "@/lib/owner/summary";
 import { browserVoice, type LiveVoice } from "@/components/chat/use-chat-session";
 import type { Recorder } from "@/components/chat/voice-input";
 import { LiveStatusNote } from "./owner-live";
 
-export type OwnerChatAction = { type: "reply"; text: string } | { type: "resolve" } | { type: "handback" };
+export type OwnerChatAction =
+  | { type: "reply"; text: string }
+  | { type: "resolve" }
+  | { type: "handback" }
+  /** เถ้าแก่ตัดสินแทน AI — ลูกค้าได้การ์ดข้อเสนอที่กดยืนยันเป็นออเดอร์ได้ */
+  | { type: "approve_price"; sku: string; pricePerUnit: number; qty: number; creditDays: number };
 
 export type OwnerChatTransport = {
   act: (action: OwnerChatAction) => Promise<OwnerChatView>;
@@ -31,13 +37,24 @@ type Props = {
   voiceInput?: boolean;
   /** ไม่ใส่ = ไมค์ของ browser + /api/transcribe */
   voice?: LiveVoice;
+  /** สินค้าที่อนุมัติราคาได้ (มีต้นทุน — หน้าเถ้าแก่เท่านั้น) · ไม่ใส่ = ไม่มีปุ่มอนุมัติราคา */
+  approvalProducts?: ApprovalProduct[];
 };
 
 /** อัดได้นานสุด แล้วหยุดเอง (เหมือนฝั่งลูกค้า) */
 const MAX_RECORD_MS = 30_000;
 
 /** หน้าแชตเถ้าแก่ (Owner-Chat): ลูกค้าซ้าย · AI/เถ้าแก่ขวา · สรุปจาก AI · ตอบในชื่อเถ้าแก่ · ให้ AI ตอบต่อ */
-export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceInput = false, voice = browserVoice }: Props) {
+export function OwnerChatScreen({
+  initial,
+  ownerName,
+  transport,
+  connect,
+  voiceInput = false,
+  voice = browserVoice,
+  approvalProducts = [],
+}: Props) {
+  const [approving, setApproving] = useState(false);
   const [view, setView] = useState(initial);
   const [pending, setPending] = useState<OwnerChatAction["type"] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +239,30 @@ export function OwnerChatScreen({ initial, ownerName, transport, connect, voiceI
             {error}
           </p>
         )}
+        {approving && approvalProducts.length > 0 && (
+          <ApprovePanel
+            products={approvalProducts}
+            messages={view.messages}
+            buyerName={view.buyerName}
+            busy={pending !== null}
+            onCancel={() => setApproving(false)}
+            onApprove={async (terms) => {
+              if (await act({ type: "approve_price", ...terms })) setApproving(false);
+            }}
+          />
+        )}
         <div className="flex gap-2 overflow-x-auto">
+          {approvalProducts.length > 0 && !approving && (
+            <button
+              type="button"
+              disabled={pending !== null}
+              onClick={() => setApproving(true)}
+              className={buttonClass("primary", "min-h-10 shrink-0 px-3.5 text-[13px] font-semibold")}
+            >
+              <BadgeCheck aria-hidden="true" size={15} />
+              อนุมัติราคา
+            </button>
+          )}
           {chips.map((chip) => (
             <button
               key={chip}
@@ -413,5 +453,161 @@ function OffersSummary({ message }: { message: Extract<ChatMessage, { type: "off
         </span>
       ))}
     </span>
+  );
+}
+
+type ApprovalTerms = { sku: string; pricePerUnit: number; qty: number; creditDays: number };
+
+/**
+ * เถ้าแก่ตัดสินแทน AI: ใส่ราคา/จำนวน/วันจ่าย เห็นกำไรก่อนกด → ลูกค้าได้การ์ดที่กดยืนยันเป็นออเดอร์ได้
+ * ตัวเลขในนี้ใช้ให้เถ้าแก่ดูเท่านั้น — server คิดยอดใหม่เองตอนบันทึก
+ */
+function ApprovePanel({
+  products,
+  messages,
+  buyerName,
+  busy,
+  onCancel,
+  onApprove,
+}: {
+  products: ApprovalProduct[];
+  messages: ChatMessage[];
+  buyerName: string;
+  busy: boolean;
+  onCancel: () => void;
+  onApprove: (terms: ApprovalTerms) => void | Promise<void>;
+}) {
+  const [defaults] = useState(() => approvalDefaults(messages, products));
+  const [sku, setSku] = useState(defaults.sku);
+  const [price, setPrice] = useState("");
+  const [qty, setQty] = useState(defaults.qty ? String(defaults.qty) : "");
+  const [creditDays, setCreditDays] = useState<number>(OWNER_CREDIT_CHOICES[0]);
+  const ids = { product: useId(), price: useId(), qty: useId(), credit: useId() };
+
+  const product = products.find((p) => p.sku === sku) ?? products[0];
+  const priceN = Number(price);
+  const qtyN = Number(qty);
+  const valid = !!product && price.trim() !== "" && priceN > 0 && Number.isInteger(qtyN) && qtyN > 0;
+  const preview = valid ? approvalPreview(product, priceN, qtyN) : null;
+  const field = "h-10 w-full rounded-xl border border-line bg-white px-3 text-base outline-none focus:border-accent md:text-sm";
+
+  return (
+    <section
+      aria-label="อนุมัติราคาให้ลูกค้า"
+      className="flex flex-col gap-2.5 rounded-[20px] border border-accent-border bg-white/95 px-3.5 py-3 shadow-soft"
+    >
+      <span className="flex items-center gap-1.5 text-xs font-semibold text-accent-ink">
+        <BadgeCheck aria-hidden="true" size={14} />
+        อนุมัติราคาให้{buyerName} · AI เจรจา คุณแค่ตัดสิน
+      </span>
+
+      {products.length > 1 && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor={ids.product} className="text-xs text-muted">
+            สินค้า
+          </label>
+          <select id={ids.product} value={product?.sku} onChange={(e) => setSku(e.target.value)} className={field}>
+            {products.map((p) => (
+              <option key={p.sku} value={p.sku}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
+          <label htmlFor={ids.price} className="text-xs text-muted">
+            ราคาต่อชิ้น (บาท)
+          </label>
+          <input
+            id={ids.price}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder={product ? String(product.listPrice) : ""}
+            className={field}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={ids.qty} className="text-xs text-muted">
+            จำนวน (ชิ้น)
+          </label>
+          <input
+            id={ids.qty}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className={field}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <span id={ids.credit} className="text-xs text-muted">
+          ต้องจ่ายภายใน
+        </span>
+        <div role="group" aria-labelledby={ids.credit} className="flex flex-wrap gap-1.5">
+          {OWNER_CREDIT_CHOICES.map((days) => (
+            <button
+              key={days}
+              type="button"
+              aria-pressed={creditDays === days}
+              onClick={() => setCreditDays(days)}
+              className={cn(
+                "h-9 rounded-full border px-3 text-[13px] font-medium",
+                creditDays === days ? "border-accent bg-accent-tint2 text-accent-ink" : "border-line bg-white text-ink",
+              )}
+            >
+              {formatCredit(days)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {product && (
+        <p aria-live="polite" className="text-[13px] leading-[1.55]">
+          {preview ? (
+            <>
+              <span className="font-semibold">
+                ยอดรวม {formatBaht(preview.total)} · {preview.profit >= 0 ? "กำไร" : "ขาดทุน"} {formatBaht(Math.abs(preview.profit))}
+              </span>
+              {preview.profitPctOfCost !== null && <span className="text-muted"> ({preview.profitPctOfCost}% ของทุน)</span>}
+              {preview.belowCost ? (
+                <span className="block text-warn-ink">ราคานี้ต่ำกว่าทุน — ร้านขาดทุน</span>
+              ) : preview.belowFloor ? (
+                <span className="block text-warn-ink">ต่ำกว่าราคาพื้น {formatBaht(product.floorPrice)} ที่ตั้งไว้ — AI จะไม่เสนอเอง แต่คุณอนุมัติได้</span>
+              ) : (
+                <span className="block text-ok-ink">ไม่ต่ำกว่าราคาพื้น {formatBaht(product.floorPrice)}</span>
+              )}
+            </>
+          ) : (
+            <span className="text-muted">ใส่ราคาและจำนวน เพื่อดูยอดรวมและกำไรก่อนอนุมัติ</span>
+          )}
+        </p>
+      )}
+
+      <div className="grid grid-cols-[auto_1fr] gap-2">
+        <button type="button" onClick={onCancel} className={buttonClass("secondary", "h-[42px] min-h-0 px-4 text-sm font-medium")}>
+          ยกเลิก
+        </button>
+        <button
+          type="button"
+          disabled={!valid || busy}
+          onClick={() => product && void onApprove({ sku: product.sku, pricePerUnit: priceN, qty: qtyN, creditDays })}
+          className={buttonClass("primary", "h-[42px] min-h-0 text-sm")}
+        >
+          {busy ? <LoaderCircle aria-hidden="true" size={15} className="motion-safe:animate-spin" /> : null}
+          อนุมัติ · ส่งให้ลูกค้ายืนยัน
+        </button>
+      </div>
+    </section>
   );
 }

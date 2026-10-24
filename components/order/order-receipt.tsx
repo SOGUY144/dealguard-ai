@@ -5,11 +5,13 @@ import { buttonClass } from "@/components/ui/button";
 import type { OrderView } from "@/lib/chat/mock-orders";
 import type { Storefront } from "@/lib/chat/types";
 import { formatBaht, formatClock, formatCredit, formatQty } from "@/lib/format";
+import { PaymentCard, type PaymentView } from "./payment-card";
 
-type Props = { order: OrderView; storefront: Storefront };
+/** payment ไม่ใส่ = ไม่มีส่วนชำระเงิน (เช่น test เดิม) */
+type Props = { order: OrderView; storefront: Storefront; payment?: PaymentView };
 
 /** ใบสรุปออเดอร์เต็มจอ (Mobile-Order) — บนคอมจัดกลางกว้างไม่เกิน 480px */
-export function OrderReceipt({ order, storefront }: Props) {
+export function OrderReceipt({ order, storefront, payment }: Props) {
   const { offer } = order;
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col">
@@ -46,6 +48,8 @@ export function OrderReceipt({ order, storefront }: Props) {
             <dd className="text-[28px] font-bold">{formatBaht(offer.total)}</dd>
           </div>
         </dl>
+
+        {payment && <PaymentCard payment={payment} total={offer.total} />}
 
         <p className="text-center text-sm leading-[1.6] text-muted">
           {/* ร้านไม่มี LINE ของลูกค้า — เถ้าแก่ตอบได้ทางแชตเท่านั้น (ดู design/HANDOFF.md กล่องเปลี่ยนแปลง) */}

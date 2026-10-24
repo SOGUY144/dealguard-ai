@@ -119,10 +119,11 @@ describe("OwnerSidebar / OwnerBottomNav", () => {
     expect(screen.getByRole("link", { name: "ภาพรวม" })).not.toHaveAttribute("aria-current");
   });
 
-  it("มือถือ: 4 เมนู กดได้ทุกเมนู", () => {
+  it("มือถือ: 5 เมนู กดได้ทุกเมนู (รวมผู้ช่วยตอบ LINE)", () => {
     render(<OwnerBottomNav openCount={0} current="products" />);
     const nav = screen.getByRole("navigation", { name: "เมนูเถ้าแก่" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    expect(within(nav).getAllByRole("link")).toHaveLength(5);
+    expect(within(nav).getByRole("link", { name: "ช่วยตอบ" })).toHaveAttribute("href", "/owner/assist");
     expect(within(nav).getByRole("link", { name: "สินค้า" })).toHaveAttribute("aria-current", "page");
   });
 });

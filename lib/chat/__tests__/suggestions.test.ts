@@ -20,7 +20,8 @@ describe("deriveSuggestions", () => {
 
   it("ข้อความที่ขอ chip ข้อเสนอเดิม → สั่ง 1,500 ชิ้น / จ่ายสด ที่ชี้ไปข้อเสนอล่าสุด", () => {
     const guard: ChatMessage = { id: "x", at, type: "ai_text", text: "ราคาล็อก", suggest: "trade_offs" };
-    expect(deriveSuggestions([greeting, card, offers, guard], "ai")).toEqual([
+    // การ์ดข้อเสนออายุ 24 ชม. — ใช้เวลาคงที่ ไม่งั้น test พังเองเมื่อวันผ่านไป
+    expect(deriveSuggestions([greeting, card, offers, guard], "ai", new Date("2026-10-23T15:00:00Z"))).toEqual([
       { label: "สั่ง 1,500 ชิ้น", action: { type: "select_offer", messageId: "o", offerId: "A" } },
       { label: "จ่ายสด", action: { type: "select_offer", messageId: "o", offerId: "B" } },
     ]);

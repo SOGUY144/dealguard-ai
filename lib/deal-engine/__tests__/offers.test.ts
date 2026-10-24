@@ -139,3 +139,50 @@ describe("buildOffers — กรณีอื่น", () => {
     expect(built.minDroppedTotal).toBe(324_000);
   });
 });
+
+describe("buildOffers — กำไรทั้งดีลไม่ต่ำกว่าระดับราคาพื้น", () => {
+  // ของค้างที่ทุนสูงกว่ามูลค่าที่ลูกค้ารู้สึก: ราคาต่อชิ้นผ่านพื้น แต่แถมเยอะจนกำไรรวมหลุด
+  const costlyGift: MerchantConfig = {
+    ...config,
+    products: [{ ...cable, cashDiscountPct: 0 }],
+    deadStock: [{ sku: "OLD-1", name: "ของค้าง", unitCost: 25, perceivedValue: 20, qtyAvailable: 5000 }],
+  };
+  const product = costlyGift.products[0];
+
+  it("ตัดข้อเสนอของแถมที่กำไรรวมต่ำกว่าขายที่ราคาพื้น", () => {
+    const { offers } = buildOffers(product, costlyGift, { requestedPrice: 90, qty: 1000 });
+    expect(offers.map((p) => p.offer.lever)).not.toContain("bundle");
+    for (const p of offers) {
+      expect(p.economics.marginOffer).toBeGreaterThanOrEqual((product.floorPrice - product.unitCost) * p.offer.qty);
+    }
+  });
+
+  it("ข้อเสนอที่เหลือไล่ id ใหม่ไม่ข้ามตัวอักษร", () => {
+    const { offers } = buildOffers(product, costlyGift, { requestedPrice: 90, qty: 1000 });
+    expect(offers.map((p) => p.offer.id)).toEqual(["A", "B", "C"].slice(0, offers.length));
+  });
+
+  it("ตัวอย่างหลัก (แถม 200 ชิ้น ทุน ฿15) ยังผ่านเกณฑ์", () => {
+    const { offers } = buildOffers(cable, config, example);
+    expect(offers.map((p) => p.offer.lever)).toContain("bundle");
+  });
+});
+
+describe("buildOffers — ส่วนลดจ่ายสดแค่ 2% (แลกกับเงินเข้าเร็ว 30 วัน ไม่ลดฟรี)", () => {
+  const twoPct: MerchantConfig = { ...config, products: [{ ...cable, cashDiscountPct: 0.02 }] };
+  const product = twoPct.products[0];
+  const built = buildOffers(product, twoPct, example).offers;
+
+  it("B = ฿147 โอนทันที · ของแถมยังอยู่ (เทียบกับราคาที่ลูกค้าขอแทนราคาจ่ายสด)", () => {
+    expect(built.map((p) => [p.offer.id, p.offer.lever, p.offer.pricePerUnit])).toEqual([
+      ["A", "volume", 130],
+      ["B", "cash", 147],
+      ["C", "bundle", 145],
+    ]);
+    expect(built[2].offer.bundle).toMatchObject({ name: "หัวชาร์จ 20W", qty: 400 });
+  });
+
+  it("กำไรรวม: A ฿45,000 · B ≈ ฿48,450 · C ฿39,000 (เทียบยอมลด ฿25,000)", () => {
+    expect(built.map((p) => Math.round(p.economics.marginOffer))).toEqual([45_000, 48_450, 39_000]);
+  });
+});

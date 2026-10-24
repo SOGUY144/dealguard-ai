@@ -4,7 +4,7 @@ import { LogoutForm } from "@/components/auth/logout-button";
 import { buttonClass } from "@/components/ui/button";
 import { OwnerBottomNav, OwnerSidebar } from "./owner-nav";
 
-type Page = "deals" | "escalations" | "products";
+type Page = "deals" | "escalations" | "products" | "assist";
 
 /** โครงหน้าเถ้าแก่ (นอกจากภาพรวม): แถบซ้าย (คอม) / เมนูล่าง (มือถือ) + ปุ่มออกจากระบบท้ายหน้าบนมือถือ */
 export function OwnerShell({ current, openCount, children }: { current: Page; openCount: number; children: ReactNode }) {

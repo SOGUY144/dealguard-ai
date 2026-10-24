@@ -1,11 +1,11 @@
-import { Clock, LayoutGrid, List, LogOut, Tag } from "lucide-react";
+import { Clock, LayoutGrid, List, LogOut, MessageSquareText, Tag } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoutForm } from "@/components/auth/logout-button";
 import { buttonClass } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
-type Page = "overview" | "deals" | "escalations" | "products";
+type Page = "overview" | "deals" | "escalations" | "products" | "assist";
 type Props = { openCount: number; current?: Page };
 
 type Item = {
@@ -30,6 +30,14 @@ function items(openCount: number, current: Page): Item[] {
       current: current === "escalations",
     },
     { label: "สินค้าและราคา", short: "สินค้า", href: "/owner/products", icon: <Tag size={18} />, current: current === "products" },
+    // ลูกค้าคุยใน LINE ส่วนตัว (บอทเข้าไม่ได้) → วางข้อความ ได้ข้อเสนอ + ข้อความพร้อมคัดลอก
+    {
+      label: "ผู้ช่วยตอบ LINE",
+      short: "ช่วยตอบ",
+      href: "/owner/assist",
+      icon: <MessageSquareText size={18} />,
+      current: current === "assist",
+    },
   ];
 }
 
@@ -114,7 +122,7 @@ export function OwnerBottomNav({ openCount, current = "overview" }: Props) {
   return (
     <nav
       aria-label="เมนูเถ้าแก่"
-      className="glass-pill fixed inset-x-3 bottom-3 z-20 grid grid-cols-4 p-1.5 pb-[max(6px,env(safe-area-inset-bottom))] md:hidden"
+      className="glass-pill fixed inset-x-3 bottom-3 z-20 grid grid-cols-5 p-1.5 pb-[max(6px,env(safe-area-inset-bottom))] md:hidden"
     >
       {items(openCount, current).map((item) => {
         const content = (

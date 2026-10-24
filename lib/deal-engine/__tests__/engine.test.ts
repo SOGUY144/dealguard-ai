@@ -61,7 +61,7 @@ describe("runDealEngine — acceptance tests (SKILL §7)", () => {
       brief: [
         "คุณนก ขอสายชาร์จ Type-C 1 เมตร 50,000 ชิ้น ที่ ฿125",
         "มูลค่าราว ฿6.25 ล้าน เกินเกณฑ์ ฿300,000",
-        "AI ยังไม่เสนอราคา",
+        "AI ยังไม่เสนอราคา · ถ้ายอม ฿125 ได้กำไร ฿1.25 ล้าน (สูงกว่าราคาพื้น ยอมได้)",
       ],
     });
   });
@@ -106,6 +106,10 @@ describe("runDealEngine — กรณีอื่น", () => {
   it("ขอต่ำกว่าราคาพื้นครบ 3 รอบ → ส่งให้เถ้าแก่", () => {
     const result = run({ requestedPrice: 100 }, { belowFloorCount: 2, injectionCount: 0 });
     expect(result).toMatchObject({ kind: "escalate", reason: "below_floor_3x", state: { belowFloorCount: 3 } });
+    // ราคา ฿100 = ทุนพอดี → กำไร 0 ต่ำกว่าราคาพื้น
+    expect(result.kind === "escalate" && result.brief[2]).toBe(
+      "AI ยังไม่ลดตาม · ถ้ายอม ฿100 ได้กำไร ฿0 (ต่ำกว่าราคาพื้น ไม่แนะนำ)",
+    );
   });
 
   it("ตัดข้อเสนอที่ยอดรวมเกินอำนาจของ AI ทิ้ง", () => {
@@ -167,7 +171,7 @@ describe("runDealEngine — กรณีขอบที่พบจากกา�
     const result = run({ quantity: 50_000, requestedPrice: null });
     expect(result).toMatchObject({
       kind: "escalate",
-      brief: ["คุณนก ขอสายชาร์จ Type-C 1 เมตร 50,000 ชิ้น", "มูลค่าราว ฿7.5 ล้าน (ราคาขาย) เกินเกณฑ์ ฿300,000", "AI ยังไม่เสนอราคา"],
+      brief: ["คุณนก ขอสายชาร์จ Type-C 1 เมตร 50,000 ชิ้น", "มูลค่าราว ฿7.5 ล้าน (ราคาขาย) เกินเกณฑ์ ฿300,000", "AI ยังไม่เสนอราคา · ขายราคาปกติ ฿150 ได้กำไร ฿2.5 ล้าน"],
     });
   });
 
@@ -224,5 +228,30 @@ describe("รีวิวรอบ 3 — มูลค่าเกินเกณ
 
   it("ขอราคาสูงกว่าราคาขาย → คิดมูลค่าที่ราคาขาย (ไม่ส่งเถ้าแก่เกินจริง)", () => {
     expect(runWith(config, { requestedPrice: 200, quantity: 1600 })).toMatchObject({ kind: "accept_list" });
+  });
+});
+
+describe("runDealEngine — ลูกค้าปฏิเสธทางเลือก", () => {
+  const runWith = (rejectedLevers: ("volume" | "cash" | "bundle")[], overrides: Partial<Parameters<typeof intentOf>[0]> = {}) =>
+    runDealEngine({ config, intent: intentOf(overrides), state: freshState, buyerName: "คุณนก", messageText: "x", rejectedLevers });
+
+  it("ไม่ซื้อเพิ่ม → ไม่มีข้อ ซื้อเยอะ · ไล่ id ใหม่", () => {
+    const result = runWith(["volume"]);
+    expect(result.kind === "offers" && result.offers.map((p) => [p.offer.id, p.offer.lever])).toEqual([
+      ["A", "cash"],
+      ["B", "bundle"],
+    ]);
+  });
+
+  it("ไม่รับทุกทาง → ส่งให้เถ้าแก่ตัดสิน พร้อมกำไรถ้ายอม", () => {
+    expect(runWith(["volume", "cash", "bundle"])).toMatchObject({
+      kind: "escalate",
+      reason: "all_rejected",
+      brief: [
+        "คุณนก ไม่รับทุกทางเลือก (ซื้อเพิ่ม / จ่ายสด / รับของแถม)",
+        "ขอสายชาร์จ Type-C 1 เมตร 1,000 ชิ้น ที่ ฿125",
+        "AI ไม่ลดเพิ่มเอง · ถ้ายอม ฿125 ได้กำไร ฿25,000 (สูงกว่าราคาพื้น ยอมได้)",
+      ],
+    });
   });
 });

@@ -1,10 +1,10 @@
-// API แชตฝั่งเถ้าแก่ — GET อ่านแชต · POST ตอบเอง / ปิดเรื่อง / ให้ AI ตอบต่อ (owner เท่านั้น)
+// API แชตฝั่งเถ้าแก่ — GET อ่านแชต · POST ตอบเอง / ปิดเรื่อง / ให้ AI ตอบต่อ / อนุมัติราคา (owner เท่านั้น)
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { isSameOrigin } from "@/lib/auth/routes";
 import { createChatDeps } from "@/lib/chat-server/deps";
-import { OWNER_TEXT_MAX, ownerAction } from "@/lib/chat-server/owner-actions";
+import { OWNER_MAX_CREDIT_DAYS, OWNER_TEXT_MAX, ownerAction } from "@/lib/chat-server/owner-actions";
 import { readOwnerChat } from "@/lib/owner/chat";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -12,6 +12,13 @@ const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("reply"), text: z.string().min(1).max(OWNER_TEXT_MAX * 2) }),
   z.object({ type: z.literal("resolve") }),
   z.object({ type: z.literal("handback") }),
+  z.object({
+    type: z.literal("approve_price"),
+    sku: z.string().min(1).max(64),
+    pricePerUnit: z.number().positive().max(10_000_000),
+    qty: z.number().int().positive().max(10_000_000),
+    creditDays: z.number().int().min(0).max(OWNER_MAX_CREDIT_DAYS),
+  }),
 ]);
 
 const NO_STORE = { "cache-control": "no-store" };

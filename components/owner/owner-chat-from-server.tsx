@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { OwnerChatView } from "@/lib/owner/chat-view";
+import type { ApprovalProduct, OwnerChatView } from "@/lib/owner/chat-view";
 import { connectChat } from "@/lib/supabase/live";
 import { OwnerChatScreen, type OwnerChatAction, type OwnerChatTransport } from "./owner-chat";
 
@@ -20,10 +20,12 @@ export function OwnerChatFromServer({
   initial,
   ownerName,
   voiceInput,
+  approvalProducts,
 }: {
   initial: OwnerChatView;
   ownerName: string;
   voiceInput: boolean;
+  approvalProducts?: ApprovalProduct[];
 }) {
   const { chatId } = initial;
   const transport = useMemo<OwnerChatTransport>(
@@ -31,5 +33,14 @@ export function OwnerChatFromServer({
     [chatId],
   );
   const connect = useMemo(() => connectChat(chatId), [chatId]);
-  return <OwnerChatScreen initial={initial} ownerName={ownerName} transport={transport} connect={connect} voiceInput={voiceInput} />;
+  return (
+    <OwnerChatScreen
+      initial={initial}
+      ownerName={ownerName}
+      transport={transport}
+      connect={connect}
+      voiceInput={voiceInput}
+      approvalProducts={approvalProducts}
+    />
+  );
 }

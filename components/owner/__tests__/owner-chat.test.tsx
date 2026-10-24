@@ -169,3 +169,53 @@ describe("ไมค์ของเถ้าแก่ — พูดแทนพ�
     expect(screen.getByRole("button", { name: /พูดแทนพิมพ์/ })).toBeDisabled();
   });
 });
+
+describe("OwnerChatScreen — อนุมัติราคา (AI เจรจา เถ้าแก่แค่ตัดสิน)", () => {
+  const products = [{ sku: "CBL-C-1M", name: "สายชาร์จ Type-C 1 เมตร", listPrice: 150, unitCost: 100, floorPrice: 120 }];
+  const negotiating: OwnerChatView = {
+    ...refundView,
+    escalation: { kind: "below_floor_3x", brief: ["คุณนก ยืนยันขอ ฿110", "จำนวน 1,000 ชิ้น", "AI ยังไม่ลดตาม"], status: "open", at },
+    messages: [
+      {
+        id: "o1",
+        at,
+        type: "offers",
+        sku: "CBL-C-1M",
+        offers: [
+          { id: "A", lever: "volume", label: "ซื้อเยอะ", pricePerUnit: 130, qty: 1500, conditionText: "เมื่อสั่ง 1,500 ชิ้น", total: 195000, creditDays: 30 },
+          { id: "B", lever: "cash", label: "จ่ายสด", pricePerUnit: 147, qty: 1000, conditionText: "1,000 ชิ้น · โอนทันที", total: 147000, creditDays: 0 },
+        ],
+      },
+    ],
+  };
+
+  function setupApprove(act = vi.fn<OwnerChatTransport["act"]>(async () => negotiating)) {
+    const transport: OwnerChatTransport = { act, load: vi.fn(async () => negotiating) };
+    render(
+      <OwnerChatScreen initial={negotiating} ownerName="เฮียชัย" transport={transport} connect={null} approvalProducts={products} />,
+    );
+    return { act };
+  }
+
+  it("ไม่ส่งสินค้ามา = ไม่มีปุ่มอนุมัติราคา", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "อนุมัติราคา" })).not.toBeInTheDocument();
+  });
+
+  it("จำนวนเริ่มจากที่ลูกค้าขอ · เห็นกำไรก่อนกด · ต่ำกว่าพื้นมีคำเตือน · กดแล้วส่ง approve_price", async () => {
+    const { act: send } = setupApprove();
+    fireEvent.click(screen.getByRole("button", { name: "อนุมัติราคา" }));
+    const panel = screen.getByRole("region", { name: "อนุมัติราคาให้ลูกค้า" });
+    expect(within(panel).getByLabelText("จำนวน (ชิ้น)")).toHaveValue(1000);
+    expect(within(panel).getByRole("button", { name: /อนุมัติ · ส่งให้ลูกค้ายืนยัน/ })).toBeDisabled();
+
+    fireEvent.change(within(panel).getByLabelText("ราคาต่อชิ้น (บาท)"), { target: { value: "110" } });
+    expect(within(panel).getByText(/ยอดรวม ฿110,000 · กำไร ฿10,000/)).toBeInTheDocument();
+    expect(within(panel).getByText(/ต่ำกว่าราคาพื้น ฿120/)).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "เครดิต 7 วัน" }));
+    await act(async () => fireEvent.click(within(panel).getByRole("button", { name: /อนุมัติ · ส่งให้ลูกค้ายืนยัน/ })));
+    expect(send).toHaveBeenCalledWith({ type: "approve_price", sku: "CBL-C-1M", pricePerUnit: 110, qty: 1000, creditDays: 7 });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "อนุมัติราคาให้ลูกค้า" })).not.toBeInTheDocument());
+  });
+});

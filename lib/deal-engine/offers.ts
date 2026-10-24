@@ -9,6 +9,8 @@ export type OfferRequest = {
   qty: number;
   /** ตัดข้อเสนอที่ยอดรวมเกินนี้ทิ้ง (ก่อนไล่ id) */
   maxTotal?: number;
+  /** ทางเลือกที่ลูกค้าปฏิเสธแล้ว — ไม่สร้างข้อนั้น */
+  excludeLevers?: Offer["lever"][];
 };
 
 export type BuiltOffers = {
@@ -72,14 +74,23 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
     });
   }
 
-  // ของแถมชดเชยส่วนต่างกับราคาจ่ายสด — ร้านที่ไม่มีส่วนลดจ่ายสด (0%) เทียบกับราคาที่ลูกค้าขอแทน ไม่งั้นข้อนี้หายไปด้วย
-  const giftAnchor = cashPrice < product.listPrice ? cashPrice : Math.max(product.floorPrice, request.requestedPrice ?? product.floorPrice);
-  const bundle = bundleOffer(product, config, request, giftAnchor);
+  // ของแถมชดเชยส่วนต่างกับราคาจ่ายสด — ไม่มีส่วนลดจ่ายสด (0%) หรือส่วนลดจ่ายสดน้อยจนราคาจ่ายสดสูงกว่าข้อของแถม (เช่น 2%)
+  // → เทียบกับราคาที่ลูกค้าขอแทน ไม่งั้นข้อนี้หายไปด้วย
+  const bundle = bundleOffer(product, config, request, {
+    cashPrice: cashPrice < product.listPrice ? cashPrice : null,
+    fallback: Math.max(product.floorPrice, request.requestedPrice ?? product.floorPrice),
+  });
   if (bundle) drafts.push(bundle);
 
   const maxTotal = request.maxTotal ?? Infinity;
-  const allowed = drafts.filter(({ draft }) => draft.total <= maxTotal);
-  const dropped = drafts.filter(({ draft }) => draft.total > maxTotal).map(({ draft }) => draft.total);
+  // กำไรทั้งดีล (หลังหักทุนของแถม) ต้องไม่ต่ำกว่ากำไรที่ราคาพื้น — ราคาต่อชิ้นผ่านพื้นแต่แถมเยอะจนกำไรรวมหลุดก็ไม่เสนอ
+  const excluded = new Set(request.excludeLevers ?? []);
+  const allowed = drafts.filter(
+    ({ draft, gift }) =>
+      !excluded.has(draft.lever) &&
+      draft.total <= maxTotal && keepsFloorMargin(product, computeEconomics(product, config, basis, draft, gift).marginOffer, draft.qty),
+  );
+  const dropped = drafts.filter(({ draft }) => !excluded.has(draft.lever) && draft.total > maxTotal).map(({ draft }) => draft.total);
   return {
     droppedOverLimit: dropped.length,
     minDroppedTotal: dropped.length ? Math.min(...dropped) : null,
@@ -93,6 +104,14 @@ export function buildOffers(product: Product, config: MerchantConfig, request: O
       return { offer, economics };
     }),
   };
+}
+
+/**
+ * กำไรรวมของข้อเสนอต้องไม่ต่ำกว่า "ขายที่ราคาพื้น" ในจำนวนเท่ากัน (เผื่อปัดเศษ 1 สตางค์)
+ * ราคาพื้นคือเส้นที่เถ้าแก่ตั้งไว้ — ของแถมหรือเงื่อนไขอื่นต้องไม่ทำให้ดีลทั้งก้อนต่ำกว่าเส้นนั้น
+ */
+export function keepsFloorMargin(product: Product, marginOffer: number, qty: number): boolean {
+  return marginOffer >= (product.floorPrice - product.unitCost) * qty - 0.01;
 }
 
 /** tier ที่เล็กที่สุดซึ่งมากกว่าจำนวนที่ขอ ไม่ต่ำกว่าราคาพื้น และถูกกว่าราคาขาย (เท่าราคาขาย = ซื้อเพิ่มโดยไม่ได้อะไร) */
@@ -122,8 +141,8 @@ function bundleOffer(
   product: Product,
   config: MerchantConfig,
   request: OfferRequest,
-  /** ราคาที่ใช้เทียบว่าของแถมต้องชดเชยเท่าไหร่ (ปกติคือราคาจ่ายสด) */
-  anchorPrice: number,
+  /** ราคาที่ใช้เทียบว่าของแถมต้องชดเชยเท่าไหร่: ราคาจ่ายสดถ้าถูกกว่าข้อนี้ ไม่งั้นราคาที่ลูกค้าขอ (ไม่ต่ำกว่าพื้น) */
+  anchor: { cashPrice: number | null; fallback: number },
 ): { draft: Draft; gift: GiftCost } | null {
   const stock = config.deadStock.find((d) => d.qtyAvailable > 0 && d.perceivedValue > 0);
   if (!stock) return null;
@@ -133,6 +152,7 @@ function bundleOffer(
     product.floorPrice,
     roundPrice(product.listPrice - config.bundleConcessionRatio * (product.listPrice - reference), product),
   );
+  const anchorPrice = anchor.cashPrice !== null && anchor.cashPrice < price ? anchor.cashPrice : anchor.fallback;
   const giftQty = Math.min(
     stock.qtyAvailable,
     Math.floor((request.qty * (price - anchorPrice)) / stock.perceivedValue),

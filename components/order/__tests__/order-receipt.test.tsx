@@ -51,3 +51,31 @@ describe("OrderReceipt (Mobile-Order)", () => {
     expect(screen.getByRole("button", { name: "คุยกับเฮียชัยโดยตรง" })).toBeEnabled();
   });
 });
+
+describe("OrderReceipt — ส่วนชำระเงิน", () => {
+  it("โหมดทดลอง: บอกวันครบกำหนด · QR ตัวอย่าง · กดจำลองว่าชำระแล้ว", async () => {
+    const { OrderReceipt } = await import("../order-receipt");
+    const { render: r, screen: s, fireEvent: f } = await import("@testing-library/react");
+    const order = {
+      id: "demo-X",
+      productName: "สายชาร์จ",
+      at: "2026-10-25T03:00:00.000Z",
+      offer: { id: "A" as const, lever: "list" as const, label: "ราคาที่เถ้าแก่อนุมัติ", pricePerUnit: 125, qty: 1000, conditionText: "1,000 ชิ้น · เครดิต 7 วัน", total: 125_000, creditDays: 7 },
+    };
+    const storefront = {
+      storeName: "ร้าน",
+      tagline: "",
+      ownerName: "เฮียชัย",
+      assistantName: "",
+      bankAccountName: "บัญชีร้าน",
+      contactChannel: "LINE",
+      orderRefPlaceholder: "",
+    };
+    r(<OrderReceipt order={order} storefront={storefront} payment={{ qrSvg: "<svg></svg>", mode: "demo", dueAt: "2026-11-01T03:00:00.000Z" }} />);
+    const section = s.getByRole("region", { name: "ชำระเงิน" });
+    expect(section).toHaveTextContent("ชำระภายใน 1 พ.ย. 2569");
+    expect(section).toHaveTextContent("QR ตัวอย่าง (โหมดทดลอง)");
+    f.click(s.getByRole("button", { name: "จำลองว่าชำระแล้ว" }));
+    expect(s.getByRole("status")).toHaveTextContent("ชำระแล้ว ฿125,000 (จำลอง)");
+  });
+});

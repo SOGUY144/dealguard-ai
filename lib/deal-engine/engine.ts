@@ -87,11 +87,17 @@ export function runDealEngine(input: EngineInput): EngineResult {
   if (state.belowFloorCount >= 3) return escalate("below_floor_3x", { product, qty, price: requested });
 
   // ข้อเสนอที่ยอดรวมเกินเกณฑ์ escalate ถือว่าเกินอำนาจของ AI
+  const rejected = input.rejectedLevers ?? [];
   const { offers, droppedOverLimit, minDroppedTotal } = buildOffers(product, config, {
     requestedPrice: requested,
     qty,
     maxTotal: config.escalationDealValue,
+    excludeLevers: rejected,
   });
+  // ลูกค้าไม่รับทุกทางเลือกแลกที่ร้านมี → AI ไม่ลดเอง ส่งให้เถ้าแก่ตัดสิน (AI เจรจา เถ้าแก่แค่ตัดสิน)
+  if (offers.length === 0 && droppedOverLimit === 0 && rejected.length > 0) {
+    return escalate("all_rejected", { product, qty, price: requested, rejected });
+  }
   if (offers.length === 0) {
     // ทุกทางเกินอำนาจ → ให้เถ้าแก่ตัดสิน · ลดไม่ได้เลย (เช่น พื้น = ราคาขาย) → ขายราคาปกติ
     return droppedOverLimit > 0 && minDroppedTotal !== null ? overValue(minDroppedTotal) : sellAtList();

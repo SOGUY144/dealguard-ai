@@ -76,7 +76,8 @@ export type OfferEconomics = {
 
 export type PricedOffer = { offer: Offer; economics: OfferEconomics };
 
-export type EscalationKind = "over_value" | "refund" | "complaint" | "below_floor_3x" | "injection";
+/** all_rejected = ลูกค้าไม่รับทุกทางเลือกแลก (เก็บในฐานข้อมูลเป็น buyer_request — ดู lib/chat/replies.ts) */
+export type EscalationKind = "over_value" | "refund" | "complaint" | "below_floor_3x" | "injection" | "all_rejected";
 
 /** ตัวนับต่อแชต ใช้ตัดสินว่าเมื่อไหร่ต้องส่งให้เถ้าแก่ */
 export type NegotiationState = { belowFloorCount: number; injectionCount: number };
@@ -88,6 +89,8 @@ export type EngineInput = {
   buyerName: string;
   /** ข้อความล่าสุดของลูกค้า ใช้ใส่ใน Deal Brief */
   messageText: string;
+  /** ทางเลือกที่ลูกค้าบอกว่าไม่เอาแล้ว — ไม่เสนอซ้ำ · ไม่เหลือทางเลือก → ส่งให้เถ้าแก่ตัดสิน */
+  rejectedLevers?: ("volume" | "cash" | "bundle")[];
 };
 
 export type EngineResult =
