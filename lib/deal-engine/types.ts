@@ -24,6 +24,9 @@ export type DeadStock = {
   qtyAvailable: number;
 };
 
+/** คำตอบที่เถ้าแก่กรอกไว้ให้ลูกค้า (ว่าง = ยังไม่กรอก ผู้ช่วยจะไม่ตอบเรื่องนั้น) — ไม่ใช้คิดราคา */
+export type ShopAnswers = { delivery: string; stock: string };
+
 export type MerchantConfig = {
   merchantName: string;
   ownerDisplayName: string;
@@ -33,6 +36,7 @@ export type MerchantConfig = {
   bundleConcessionRatio: number;
   products: Product[];
   deadStock: DeadStock[];
+  answers: ShopAnswers;
 };
 
 /** Output ของ Layer 1 (SKILL §6.3) ในรูป camelCase — ค่าที่ดึงไม่ได้เป็น null */

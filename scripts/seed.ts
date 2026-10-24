@@ -58,6 +58,9 @@ async function main() {
     cost_of_capital_annual: merchant.costOfCapitalAnnual,
     escalation_deal_value: merchant.escalationDealValue,
     bundle_concession_ratio: merchant.bundleConcessionRatio,
+    // คำตอบให้ลูกค้า (ค่าเดโม — ร้านจริงแก้ในหน้าสินค้า)
+    delivery_info: merchant.answers.delivery,
+    stock_info: merchant.answers.stock,
   };
   const existing = check("อ่านร้าน", await db.from("merchants").select("id").eq("name", shop.name).maybeSingle());
   const merchantId: string = existing

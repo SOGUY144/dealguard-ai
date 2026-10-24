@@ -7,7 +7,14 @@ export type ReplyWriter = { write(facts: ReplyFacts): Promise<ReplyDraft> };
 /** SKILL §6.7: LLM เขียน ≤ 3 วินาที */
 const DEFAULT_TIMEOUT_MS = 3000;
 
-export type WrittenText = { text: string; source: "llm" | "template"; reason?: string };
+/**
+ * spoken = ฉบับสั้นสำหรับตอบเป็นเสียง: ประโยคเปิดที่ตรวจแล้ว + ให้ดูการ์ด
+ * อ่านครบทุกข้อยาว ~25 วินาที (เกือบครึ่งเดโม) และตัวเลขทุกข้ออยู่ในการ์ดอยู่แล้ว · template สั้นอยู่แล้ว ไม่ต้องมี
+ */
+export type WrittenText = { text: string; spoken?: string; source: "llm" | "template"; reason?: string };
+
+/** ต่อท้ายประโยคเปิดเมื่อตอบเป็นเสียง (ข้อความแต่งเพิ่ม — ทีมตรวจได้) */
+export const VOICE_CARD_HINT = "ดูรายละเอียดแล้วกดเลือกในการ์ดได้เลยครับ";
 
 export async function writeOffersText(
   writer: ReplyWriter | null,
@@ -32,5 +39,6 @@ export async function writeOffersText(
   if (draft === "timeout") return { text: template, source: "template", reason: "timeout" };
 
   const check = validateDraft(draft, facts);
-  return check.ok ? { text: assembleReply(draft), source: "llm" } : { text: template, source: "template", reason: check.reason };
+  if (!check.ok) return { text: template, source: "template", reason: check.reason };
+  return { text: assembleReply(draft), spoken: `${draft.intro.trim()} ${VOICE_CARD_HINT}`, source: "llm" };
 }

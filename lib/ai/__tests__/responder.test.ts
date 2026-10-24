@@ -33,7 +33,12 @@ const withOption = (id: string, text: string): ReplyDraft => ({
 describe("writeOffersText — LLM เรียบเรียง ตัวเลขผิดต้องไม่ถึงลูกค้า", () => {
   it("ผ่านการตรวจ → ข้อความของ LLM (ระบบต่อส่วนต่างๆ เอง)", async () => {
     const w = writer(async () => GOOD);
-    expect(await writeOffersText(w, facts, TEMPLATE)).toEqual({ text: GOOD_TEXT, source: "llm" });
+    expect(await writeOffersText(w, facts, TEMPLATE)).toEqual({
+      text: GOOD_TEXT,
+      // ตอบเป็นเสียง: พูดแค่ประโยคเปิด รายละเอียดอยู่ในการ์ดแล้ว (อ่านครบ 3 ข้อยาว ~25 วินาที)
+      spoken: "คุณนกครับ 125 เฮียชัยให้ไม่ไหว แต่มี 3 ทางครับ ดูรายละเอียดแล้วกดเลือกในการ์ดได้เลยครับ",
+      source: "llm",
+    });
     expect(w.write).toHaveBeenCalledWith(facts);
   });
 

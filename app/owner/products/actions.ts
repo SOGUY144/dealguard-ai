@@ -14,6 +14,8 @@ import {
 } from "@/lib/owner/catalog";
 import { productSettingsSchema, type SaveResult } from "@/lib/owner/product-settings";
 import { saveProductSettings } from "@/lib/owner/products";
+import { shopAnswersSchema } from "@/lib/owner/shop-answers";
+import { saveShopAnswers } from "@/lib/owner/shop-answers-store";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 // ทุก action: เช็กว่าเป็นเถ้าแก่ก่อน → ตรวจรูปร่างข้อมูล (browser ส่งอะไรมาก็ได้) → ตรวจกฎ → เขียนด้วย service role
@@ -116,4 +118,12 @@ export async function importCatalog(input: unknown): Promise<ImportResult> {
   return run<ImportResult>({ ok: false, error: "นำเข้าไม่สำเร็จ ลองใหม่อีกครั้ง" }, () =>
     importProducts(createSupabaseAdminClient(), parsed.data),
   );
+}
+
+/** คำตอบให้ลูกค้าเรื่องส่งของ / สต๊อก — ลูกค้าถามครั้งถัดไปได้คำตอบนี้ทันที */
+export async function saveAnswers(input: unknown): Promise<SaveResult> {
+  await requireOwner();
+  const parsed = shopAnswersSchema.safeParse(input);
+  if (!parsed.success) return BAD_INPUT;
+  return run(FAILED, () => saveShopAnswers(createSupabaseAdminClient(), parsed.data));
 }

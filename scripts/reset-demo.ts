@@ -97,7 +97,9 @@ async function main() {
         update public.merchants
            set cost_of_capital_annual = ${merchant.costOfCapitalAnnual},
                escalation_deal_value = ${merchant.escalationDealValue},
-               bundle_concession_ratio = ${merchant.bundleConcessionRatio}
+               bundle_concession_ratio = ${merchant.bundleConcessionRatio},
+               delivery_info = ${merchant.answers.delivery},
+               stock_info = ${merchant.answers.stock}
          where id = ${shop.id}`;
 
       // ตรวจว่าคืนครบจริง — ไม่ครบให้ยกเลิกทั้งหมด (ดีกว่าบอกว่าสำเร็จแต่ร้านยังเพี้ยน)

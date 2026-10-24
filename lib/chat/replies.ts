@@ -2,7 +2,8 @@
 // ใน lib/ai/responder.ts แล้วใช้ template นี้เป็นทางสำรอง) — ตัวเลขทุกตัวมาจากข้อเสนอ/ราคาขาย/สิ่งที่ลูกค้าพิมพ์เท่านั้น
 // ข้อความที่ไม่มีในไฟล์ดีไซน์ (ask_product, ask_quantity, accept_list, คุยเรื่องอื่น, escalate ที่ไม่ใช่คืนเงิน) แต่งเพิ่ม ต้องให้ทีมตรวจ
 import { formatBaht, formatQty } from "@/lib/format";
-import type { EngineResult, EscalationKind } from "@/lib/deal-engine/types";
+import type { InfoTopic } from "@/lib/ai/info-topics";
+import type { EngineResult, EscalationKind, ShopAnswers } from "@/lib/deal-engine/types";
 import type { ChatMessageDraft, ChatMessageOf, Offer, PublicProduct, Storefront } from "./types";
 
 export type HandoffKind = EscalationKind | "buyer_request";
@@ -24,6 +25,8 @@ export type ReplyContext = {
   competitorPrice?: number | null;
   /** ลูกค้าขอลด (แม้ไม่บอกราคา) — ขายราคาปกติต้องไม่ขึ้นต้นว่า "ได้ครับ" */
   askedDiscount?: boolean;
+  /** ถามข้อมูลทั่วไป (SKILL §11.3): asked = ถามข้อมูล · topics = เรื่องที่รู้จัก · answers = ที่เถ้าแก่กรอก */
+  info?: { asked: boolean; topics: InfoTopic[]; answers: ShopAnswers };
 };
 
 /**
@@ -193,6 +196,9 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
           ],
         };
       }
+      if (ctx.info && (ctx.info.topics.length > 0 || ctx.info.asked)) {
+        return { messages: [text(infoAnswer(ctx.info, ctx.storefront))] };
+      }
       if (product) return { messages: [text(productIntroText(product))] };
       return {
         messages: [
@@ -206,6 +212,29 @@ export function replyFor(result: EngineResult, ctx: ReplyContext): Reply {
         handoff: { kind: result.reason, brief: result.brief },
       };
   }
+}
+
+const TOPIC_LABEL: Record<Exclude<InfoTopic, "payment">, string> = { delivery: "การส่งของ", stock: "สต๊อก" };
+const ASK_OWNER = (owner: string) => `กด "คุยกับคนจริง" ที่หัวแชตเพื่อถาม${owner}ได้เลยครับ`;
+
+/**
+ * คำตอบเรื่องส่งของ/สต๊อก = ข้อความที่เถ้าแก่กรอกตรงตัว (เถ้าแก่รับผิดชอบเอง ไม่ผ่าน LLM จึงไม่มีการแต่งเพิ่ม)
+ * จ่ายเงิน = บัญชีร้าน · ยังไม่กรอก / ไม่รู้จักเรื่องนั้น → บอกตรงๆ แล้วชวนคุยกับคนจริง (AI ยังตอบต่อได้ ไม่ส่งเรื่อง)
+ */
+function infoAnswer(info: NonNullable<ReplyContext["info"]>, storefront: Storefront): string {
+  const owner = storefront.ownerName;
+  if (info.topics.length === 0) {
+    return `เรื่องนี้ผู้ช่วยยังตอบไม่ได้ครับ ${ASK_OWNER(owner)} ผู้ช่วยช่วยได้เรื่องราคา สต๊อก การส่ง และการจ่ายเงินครับ`;
+  }
+  return info.topics
+    .map((topic) => {
+      if (topic === "payment") {
+        return `ร้านรับโอนเข้าบัญชี ${storefront.bankAccountName} เท่านั้นครับ ถ้าโอนทันทีไม่ใช้เครดิต บางสินค้าได้ราคาดีขึ้น บอกสินค้ากับจำนวนมาได้เลยครับ เดี๋ยวคิดให้`;
+      }
+      const answer = info.answers[topic].trim();
+      return answer || `เรื่อง${TOPIC_LABEL[topic]} ${owner}ยังไม่ได้ให้ข้อมูลผู้ช่วยไว้ครับ ${ASK_OWNER(owner)}`;
+    })
+    .join(" ");
 }
 
 function escalateText(reason: EscalationKind, buyerName: string, owner: string): string {

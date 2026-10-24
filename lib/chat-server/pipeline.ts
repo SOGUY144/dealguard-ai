@@ -1,6 +1,7 @@
 // ต่อทุกชั้นของแชตลูกค้า: ข้อความ → Layer 1 (intent) → Layer 2 (Deal Engine) → Layer 3 (template / LLM + ตรวจตัวเลข) → เก็บลงที่เก็บ
 // ตัวเลขราคาทุกตัวมาจาก Deal Engine · ยืนยันออเดอร์จากข้อเสนอที่ server เก็บไว้เท่านั้น
 import "server-only";
+import { infoTopics } from "@/lib/ai/info-topics";
 import { parseIntent, type IntentLlm } from "@/lib/ai/intent";
 import { writeOffersText, type ReplyWriter } from "@/lib/ai/responder";
 import { saysNumber, type ReplyFacts } from "@/lib/ai/validator";
@@ -39,6 +40,8 @@ export type PipelineDeps = {
   replyTimeoutMs?: number;
 };
 
+/** คำตอบ + ฉบับสั้นของข้อความแรกไว้ตอบเป็นเสียง (LLM เขียน · ดู WrittenText) */
+type Written = Reply & { spoken?: string };
 /** คำตอบที่จะบันทึก + เสียงของข้อความ ai_voice (ตำแหน่งใน messages) */
 type Outgoing = Reply & { voice?: { index: number; spoken: SpokenAudio } };
 
@@ -183,7 +186,7 @@ async function send(
   // ข้อความลูกค้าบันทึกพร้อมคำตอบในคำสั่งเดียว (ประหยัด round trip) — ถ้าตอบไม่สำเร็จ หน้าจอคืนข้อความให้ส่งใหม่
   const buyerDraft: ChatMessageDraft = { type: "buyer_text", text, inputMode };
   // ข้อความลูกค้า + (ถ้าพูดมา) แปลงคำตอบเป็นเสียง — ทุกทางที่ AI ตอบผ่านตรงนี้
-  const prepare = async (reply: Reply): Promise<Outgoing> =>
+  const prepare = async (reply: Written): Promise<Outgoing> =>
     speakReply(deps, { ...reply, messages: [buyerDraft, ...reply.messages] }, inputMode);
   const onlyBuyerText = async (target: StoredChat) =>
     view(target, [...messages, ...(await store.appendMessages(chat.id, [buyerDraft]))]);
@@ -253,6 +256,8 @@ async function send(
     asksCost: ASKS_COST.test(text),
     competitorPrice,
     askedDiscount: intent.intent === "negotiate_price",
+    // ถามข้อมูลทั่วไป: GPT บอกว่าเป็นคำถาม หรือกฎเจอเรื่องที่ร้านมีคำตอบ (ใช้เฉพาะตอนไม่ได้ต่อราคา — engine ตัดสินแล้ว)
+    info: { asked: intent.intent === "ask_info", topics: infoTopics(text), answers: config.answers },
   });
   const priced = result.kind === "offers" ? result.offers : result.kind === "accept_list" ? [result.offer] : undefined;
   // LLM ได้แค่ตัวเลขที่ Deal Engine คิดแล้ว + ชื่อลูกค้า (ไม่ได้ข้อความดิบ) · ตรวจไม่ผ่านใช้ template
@@ -283,7 +288,7 @@ async function send(
 }
 
 /** แทนข้อความแรกของ AI (ที่มากับการ์ดข้อเสนอ) ด้วยข้อความที่ LLM เรียบเรียงและผ่านการตรวจตัวเลขแล้ว */
-async function writeOffersReply(deps: PipelineDeps, reply: Reply, facts: ReplyFacts): Promise<Reply> {
+async function writeOffersReply(deps: PipelineDeps, reply: Reply, facts: ReplyFacts): Promise<Written> {
   const index = reply.messages.findIndex((m) => m.type === "ai_text");
   const draft = reply.messages[index];
   if (draft?.type !== "ai_text") return reply;
@@ -291,7 +296,7 @@ async function writeOffersReply(deps: PipelineDeps, reply: Reply, facts: ReplyFa
   if (written.reason) console.warn(`[chat] ข้อความ LLM ไม่ผ่าน (${written.reason}) ใช้ template แทน`);
   const messages = [...reply.messages];
   messages[index] = { ...draft, text: written.text };
-  return { ...reply, messages };
+  return { ...reply, messages, ...(written.spoken && { spoken: written.spoken }) };
 }
 
 /** ตัวนับไม่เปลี่ยนก็ไม่ต้องเขียน */
@@ -406,19 +411,21 @@ async function confirmOffer(
  * ลูกค้าพูดมา → ตอบเป็นเสียง (SKILL: ตอบตามแบบที่ลูกค้าใช้) — แปลงข้อความแรกของ AI เป็น ai_voice + transcript
  * เสียงล่ม/ช้าเกิน → แจ้ง voice_unavailable แล้วตอบเป็นข้อความ (Mobile-NoVoice) · ไม่มีคีย์เสียง → ข้อความเฉยๆ
  */
-async function speakReply(deps: PipelineDeps, reply: Reply, inputMode: "text" | "voice"): Promise<Outgoing> {
+async function speakReply(deps: PipelineDeps, { spoken: short, ...reply }: Written, inputMode: "text" | "voice"): Promise<Outgoing> {
   if (inputMode !== "voice" || !deps.speaker) return reply;
   const index = reply.messages.findIndex((m) => m.type === "ai_text");
   if (index < 0) return reply;
   const draft = reply.messages[index];
   if (draft.type !== "ai_text") return reply;
 
+  // ตัวหนังสือใต้เสียง = สิ่งที่พูดจริง
+  const say = short ?? draft.text;
   const started = Date.now();
   try {
-    const spoken = await withDeadline(deps.speaker.speak(draft.text), deps.voiceTimeoutMs ?? DEFAULT_VOICE_TIMEOUT_MS);
+    const spoken = await withDeadline(deps.speaker.speak(say), deps.voiceTimeoutMs ?? DEFAULT_VOICE_TIMEOUT_MS);
     console.info(`[voice] tts ${Date.now() - started} ms · ${spoken.audio.byteLength} bytes`);
     const messages = [...reply.messages];
-    messages[index] = { type: "ai_voice", durationSec: spoken.durationSec, transcript: draft.text };
+    messages[index] = { type: "ai_voice", durationSec: spoken.durationSec, transcript: say };
     return { ...reply, messages, voice: { index, spoken } };
   } catch (err) {
     console.warn(`[voice] tts ล่ม ตอบเป็นข้อความแทน (${Date.now() - started} ms): ${err instanceof Error ? err.message : err}`);

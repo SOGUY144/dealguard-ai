@@ -669,14 +669,75 @@ describe("เฟส 5 — LLM เรียบเรียงข้อควา�
     expect(w.write).toHaveBeenCalledWith(expect.objectContaining({ competitorPrice: 110 }));
   });
 
-  it("พูดมา → เสียงอ่านข้อความของ LLM", async () => {
+  it("พูดมา → เสียงพูดแค่ประโยคเปิดของ LLM + ให้ดูการ์ด (ไม่อ่านครบ 3 ข้อ) · ตัวหนังสือใต้เสียงตรงกับที่พูด", async () => {
     deps.replyWriter = writer(async () => GOOD);
     const speak = vi.fn(async () => ({ audio: new Uint8Array([1]), mimeType: "audio/mpeg", durationSec: 5 }));
     deps.speaker = { speak };
     await pick();
     const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "voice");
-    expect(last(view, "ai_voice")?.transcript).toBe(GOOD_TEXT);
-    expect(speak).toHaveBeenCalledWith(GOOD_TEXT);
+    const short = `${GOOD.intro} ดูรายละเอียดแล้วกดเลือกในการ์ดได้เลยครับ`;
+    expect(last(view, "ai_voice")?.transcript).toBe(short);
+    expect(speak).toHaveBeenCalledWith(short);
+    // รายละเอียดทุกข้อยังอยู่ในการ์ด
+    expect(last(view, "offers")?.offers.map((o) => o.pricePerUnit)).toEqual([130, 135, 145]);
+  });
+
+  it("พิมพ์มา → ยังได้ข้อความของ LLM ครบทุกข้อ", async () => {
+    deps.replyWriter = writer(async () => GOOD);
+    deps.speaker = { speak: vi.fn(async () => ({ audio: new Uint8Array([1]), mimeType: "audio/mpeg", durationSec: 5 })) };
+    await pick();
+    expect(lastAiText(await say("ขอ 125 ได้ไหม 1000 ชิ้น"))).toBe(GOOD_TEXT);
+  });
+
+  it("LLM ไม่ผ่านการตรวจแล้วพูดมา → เสียงอ่าน template (สั้นอยู่แล้ว)", async () => {
+    deps.replyWriter = writer(async () => ({ ...GOOD, closing: "ส่งฟรีครับ" }));
+    const speak = vi.fn(async () => ({ audio: new Uint8Array([1]), mimeType: "audio/mpeg", durationSec: 5 }));
+    deps.speaker = { speak };
+    await pick();
+    const view = await say("ขอ 125 ได้ไหม 1000 ชิ้น", "voice");
+    expect(last(view, "ai_voice")?.transcript).toBe(TEMPLATE);
+    expect(speak).toHaveBeenCalledWith(TEMPLATE);
+  });
+});
+
+describe("ถามข้อมูลทั่วไป (SKILL §11.3) — ตอบจากที่เถ้าแก่กรอกไว้", () => {
+  it("ถามส่งกี่วัน → ข้อความที่เถ้าแก่กรอก ไม่ใช่บอกราคาซ้ำ", async () => {
+    await pick();
+    expect(lastAiText(await say("ส่งกี่วันครับ"))).toBe(config.answers.delivery);
+  });
+
+  it("ถามสต๊อกกับส่งของในข้อความเดียว → ตอบทั้งสอง", async () => {
+    await pick();
+    expect(lastAiText(await say("มีของไหม ส่งกี่วัน"))).toBe(`${config.answers.stock} ${config.answers.delivery}`);
+  });
+
+  it("เถ้าแก่ยังไม่ได้กรอก → บอกว่ายังตอบไม่ได้ ชวนคุยกับคนจริง แต่ AI ยังคุยต่อ (ไม่ส่งเรื่อง)", async () => {
+    deps.store = store = new MemoryChatStore({ ...config, answers: { delivery: "", stock: "" } });
+    await pick();
+    const view = await say("ส่งกี่วันครับ");
+    expect(lastAiText(view)).toMatch(/ยังไม่ได้ให้ข้อมูลผู้ช่วยไว้/);
+    expect(view.mode).toBe("ai");
+  });
+
+  it("ถามพร้อมต่อราคา → ต่อราคาก่อน (ได้ข้อเสนอ)", async () => {
+    await pick();
+    expect(last(await say("ขอ 125 ได้ไหม 1000 ชิ้น ส่งกี่วัน"), "offers")).toBeDefined();
+  });
+
+  it("GPT บอกว่าเป็นคำถาม แต่ไม่ใช่เรื่องที่ร้านกรอกไว้ → ไม่เดาคำตอบ", async () => {
+    deps.intentLlm = {
+      extract: async () => ({
+        intent: "ask_info",
+        sku: SKU,
+        requested_price: null,
+        quantity: null,
+        payment_terms_requested_days: null,
+        competitor_price: null,
+        injection_suspected: false,
+      }),
+    };
+    await pick();
+    expect(lastAiText(await say("สายนี้รับประกันกี่เดือน"))).toMatch(/^เรื่องนี้ผู้ช่วยยังตอบไม่ได้ครับ/);
   });
 });
 

@@ -138,6 +138,7 @@ export class SupabaseChatStore implements ChatStore {
         perceivedValue: num(d.perceived_value),
         qtyAvailable: num(d.qty_available),
       })),
+      answers: { delivery: String(shop.delivery_info ?? ""), stock: String(shop.stock_info ?? "") },
     };
   }
 
