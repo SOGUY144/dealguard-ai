@@ -37,23 +37,30 @@ describe("LoginForm", () => {
     expect(form.get("js")).toBe("1");
   });
 
-  it("บัญชีทดลอง: โชว์อีเมลกับรหัส และกดแล้วกรอกให้ ส่งเข้าระบบได้เลย", async () => {
-    const action = fakeAction({});
-    render(<LoginForm action={action} demoAccount={{ email: "demo@example.com", password: "demo-pass-1" }} />);
-    expect(screen.getByText("demo@example.com")).toBeInTheDocument();
-    expect(screen.getByText("demo-pass-1")).toBeInTheDocument();
+  const demoAccounts = [
+    { label: "ลูกค้า", note: "มีแชตไว้ให้ดู", email: "buyer@example.com", password: "buyer-pass-1" },
+    { label: "เถ้าแก่", note: "ดูหลังร้าน", email: "owner@example.com", password: "owner-pass-1" },
+  ];
 
-    fireEvent.click(screen.getByRole("button", { name: "ใช้บัญชีทดลอง" }));
-    expect(screen.getByLabelText("อีเมล")).toHaveValue("demo@example.com");
-    expect(screen.getByLabelText("รหัสผ่าน")).toHaveValue("demo-pass-1");
+  it("บัญชีทดลอง: โชว์อีเมลกับรหัสทุกบัญชี และกดแล้วกรอกบัญชีนั้นให้ ส่งเข้าระบบได้เลย", async () => {
+    const action = fakeAction({});
+    render(<LoginForm action={action} demoAccounts={demoAccounts} />);
+    for (const text of ["buyer@example.com", "buyer-pass-1", "owner@example.com", "owner-pass-1"]) {
+      expect(screen.getByText(text)).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "ใช้บัญชีลูกค้า" }));
+    fireEvent.click(screen.getByRole("button", { name: "ใช้บัญชีเถ้าแก่" }));
+    expect(screen.getByLabelText("อีเมล")).toHaveValue("owner@example.com");
+    expect(screen.getByLabelText("รหัสผ่าน")).toHaveValue("owner-pass-1");
     fireEvent.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
     await waitFor(() => expect(action).toHaveBeenCalled());
-    expect(action.mock.calls[0][1].get("email")).toBe("demo@example.com");
+    expect(action.mock.calls[0][1].get("email")).toBe("owner@example.com");
   });
 
   it("ไม่มีบัญชีทดลอง → ไม่มีกล่องบัญชีทดลอง", () => {
     render(<LoginForm action={fakeAction({})} />);
-    expect(screen.queryByRole("button", { name: "ใช้บัญชีทดลอง" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ใช้บัญชี/ })).not.toBeInTheDocument();
   });
 
   it("ล็อกอินผ่าน → สั่งเล่นคัตซีนต้อนรับพร้อมหน้าปลายทาง", async () => {

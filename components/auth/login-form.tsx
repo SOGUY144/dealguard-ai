@@ -8,11 +8,11 @@ import type { FormAction } from "@/lib/auth/form-state";
 import { FormMessage, SubmitButton, TextField } from "./fields";
 import { WelcomeHandoff } from "./welcome-handoff";
 
-type DemoAccount = { email: string; password: string };
+type DemoAccount = { label: string; note: string; email: string; password: string };
 
-/** บัญชีลูกค้าทดลองให้กรรมการ — กดแล้วกรอกให้ ไม่ต้องพิมพ์เอง */
-function DemoAccountBox({ email, password }: DemoAccount) {
-  const fill = (e: MouseEvent<HTMLButtonElement>) => {
+/** บัญชีทดลองให้กรรมการ — กดแล้วกรอกให้ ไม่ต้องพิมพ์เอง */
+function DemoAccounts({ accounts }: { accounts: DemoAccount[] }) {
+  const fill = (e: MouseEvent<HTMLButtonElement>, { email, password }: DemoAccount) => {
     const fields = e.currentTarget.form?.elements;
     for (const [name, value] of [["email", email], ["password", password]] as const) {
       const input = fields?.namedItem(name) as HTMLInputElement | null;
@@ -20,23 +20,33 @@ function DemoAccountBox({ email, password }: DemoAccount) {
     }
   };
   return (
-    <div role="note" className="flex flex-col gap-2 rounded-2xl bg-accent-tint p-4 text-sm text-accent-ink">
-      <p className="font-semibold">บัญชีลูกค้าทดลองสำหรับกรรมการ</p>
-      <p>มีแชตต่อราคากับ AI ไว้ให้ดูแล้ว เข้าไปคุยต่อได้เลย</p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt>อีเมล</dt>
-        <dd className="select-all break-all font-semibold">{email}</dd>
-        <dt>รหัสผ่าน</dt>
-        <dd className="select-all font-semibold">{password}</dd>
-      </dl>
-      <button type="button" onClick={fill} className={buttonClass("secondary", "h-10 min-h-0 px-4 text-[13px] font-semibold")}>
-        ใช้บัญชีทดลอง
-      </button>
+    <div role="note" className="flex flex-col gap-3 rounded-2xl bg-accent-tint p-4 text-sm text-accent-ink">
+      <p className="font-semibold">บัญชีทดลองสำหรับกรรมการ</p>
+      {accounts.map((account) => (
+        <div key={account.email} className="flex flex-col gap-2 border-t border-accent-border pt-3 first-of-type:border-0 first-of-type:pt-0">
+          <p>
+            <span className="font-semibold">{account.label}</span> · {account.note}
+          </p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt>อีเมล</dt>
+            <dd className="select-all break-all font-semibold">{account.email}</dd>
+            <dt>รหัสผ่าน</dt>
+            <dd className="select-all font-semibold">{account.password}</dd>
+          </dl>
+          <button
+            type="button"
+            onClick={(e) => fill(e, account)}
+            className={buttonClass("secondary", "h-10 min-h-0 px-4 text-[13px] font-semibold")}
+          >
+            ใช้บัญชี{account.label}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
 
-export function LoginForm({ action, demoAccount }: { action: FormAction; demoAccount?: DemoAccount }) {
+export function LoginForm({ action, demoAccounts }: { action: FormAction; demoAccounts?: DemoAccount[] }) {
   const [state, formAction] = useActionState(action, {});
   const params = useSearchParams();
   const next = params.get("next") ?? "/";
@@ -48,7 +58,7 @@ export function LoginForm({ action, demoAccount }: { action: FormAction; demoAcc
       <input type="hidden" name="next" value={next} />
       {/* ล็อกอินผ่าน → คัตซีนต้อนรับแล้วพาไปหน้าปลายทาง */}
       <WelcomeHandoff welcome={state.welcome} />
-      {demoAccount && <DemoAccountBox {...demoAccount} />}
+      {demoAccounts?.length ? <DemoAccounts accounts={demoAccounts} /> : null}
       <FormMessage error={state.error ?? linkError} notice={state.notice} />
       <TextField
         label="อีเมล"
