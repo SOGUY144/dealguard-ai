@@ -1113,3 +1113,43 @@ describe("คุยอิสระ — ตอบตรงคำถาม แต�
     expect(w.write).not.toHaveBeenCalled();
   });
 });
+
+describe("คุยทั่วไป — ถามว่าเป็นบอท / ทักทาย (ชุดทดสอบกับ GPT จริง 25 ต.ค. 2569)", () => {
+  const gptSays = (out: Record<string, unknown>) => ({
+    extract: vi.fn(async () => ({
+      intent: "other",
+      sku: SKU,
+      requested_price: null,
+      quantity: null,
+      payment_terms_requested_days: null,
+      competitor_price: null,
+      injection_suspected: false,
+      budget_total: null,
+      frustrated: false,
+      ...out,
+    })),
+  });
+
+  it('"เป็นคนหรือบอท" GPT ติดธงหลอกระบบ → ตอบว่าเป็นผู้ช่วย AI ไม่ขึ้นราคาล็อก', async () => {
+    deps.intentLlm = gptSays({ injection_suspected: true });
+    await pick();
+    const view = await say("เป็นคนหรือบอท");
+    expect(view.messages.some((m) => m.type === "system" && m.kind === "price_locked")).toBe(false);
+    expect(lastAiText(view)).toMatch(/ผู้ช่วย AI/);
+  });
+
+  it("ลูกค้าทักทาย แต่ GPT ไม่ทักกลับ → ใช้คำตอบสำรองที่ทักกลับ", async () => {
+    deps.intentLlm = gptSays({});
+    deps.chatWriter = { write: vi.fn(async () => ({ text: "ยินดีครับคุณนก มีอะไรให้ช่วยถามได้เลยครับ" })) };
+    await pick();
+    expect(lastAiText(await say("สวัสดีครับ"))).toMatch(/สวัสดี/);
+  });
+
+  it("ถามว่าเป็นบอท แต่ GPT ไม่ตอบว่าเป็น AI → ใช้คำตอบสำรอง", async () => {
+    deps.intentLlm = gptSays({});
+    deps.chatWriter = { write: vi.fn(async () => ({ text: "ผมพร้อมช่วยคุณนกเรื่องราคาครับ" })) };
+    await pick();
+    expect(lastAiText(await say("เป็นคนหรือบอท"))).toMatch(/ผู้ช่วย AI/);
+  });
+});
+

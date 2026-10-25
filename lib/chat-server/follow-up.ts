@@ -7,6 +7,7 @@ import type { ChatMessage, ChatMessageOf, Offer } from "@/lib/chat/types";
 import { budgetQty, priceGuide, reachPrice } from "@/lib/deal-engine/price-guide";
 import { rejectedLetters, rejectedLevers } from "@/lib/deal-engine/rejections";
 import type { Intent, MerchantConfig, Product } from "@/lib/deal-engine/types";
+import { ASKS_BOT, GREETING } from "@/lib/ai/fallback-intent";
 import { formatBaht, formatQty } from "@/lib/format";
 
 /** สิ่งที่ตอบ: template (ใช้ตอน GPT ไม่ได้/ตรวจไม่ผ่าน) + ข้อมูลให้ GPT เรียบเรียง */
@@ -296,6 +297,11 @@ export function freeChatReply(ctx: FreeChatContext, template: string): FollowUpR
       letters: [...new Set(offers.map((o) => o.id))],
       names: [...(focus ? [focus.name] : []), ...others.map((p) => p.name), ...offers.flatMap((o) => (o.bundle ? [o.bundle.name] : []))],
       strict: true,
+      // ทักมาต้องทักกลับ · ถามว่าเป็นบอทต้องบอกว่าเป็น AI (GPT จริงเคยตอบ "ยินดีครับ" กับ "สวัสดีครับ") — ไม่มี → คำตอบสำรอง
+      requiredWords: [
+        ...(GREETING.test(ctx.text ?? "") ? ["สวัสดี|หวัดดี"] : []),
+        ...(ASKS_BOT.test(ctx.text ?? "") ? ["AI|เอไอ"] : []),
+      ],
       foreignNames: foreignWords(others, focus),
     },
   };
@@ -326,9 +332,7 @@ function foreignWords(others: Product[], focus: Product | undefined): string[] {
   return [...new Set(words)];
 }
 
-const GREETING = /^\s*(?:สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|ดีจ้า|hello|hi\b)/i;
 const THANKS = /ขอบคุณ|ขอบใจ|thank/i;
-const ASKS_BOT = /บอท|bot\b|หุ่นยนต์|เอไอ|\bAI\b|เป็นคน(?:จริง)?(?:หรือ|ไหม|มั้ย|รึ)|ใช่คน(?:จริง)?(?:ไหม|มั้ย|รึ|หรือ)|คนตอบ(?:ไหม|มั้ย|หรือ)/i;
 const ASKS_PLACE_TIME = /ที่ไหน|อยู่ไหน|ที่อยู่|แผนที่|โลเคชั่น|โลเคชัน|location|กี่โมง|เปิด(?:กี่|วัน|ทุก)|ปิด(?:กี่|วัน)|หน้าร้าน/i;
 
 /** คำตอบสำรองของคุยอิสระ (ไม่ผ่าน GPT) — null = ใช้ template เดิมของระบบ */

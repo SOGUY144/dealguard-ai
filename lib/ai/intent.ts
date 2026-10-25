@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { PublicProduct } from "@/lib/chat/types";
 import type { Intent } from "@/lib/deal-engine/types";
-import { fallbackIntent, PRICE_QUESTION } from "./fallback-intent";
+import { ASKS_BOT, fallbackIntent, PRICE_QUESTION } from "./fallback-intent";
 
 /** รูปแบบที่ GPT ต้องตอบ (snake_case ตาม SKILL §6.3) — ค่าที่ไม่รู้ต้องเป็น null ห้ามเดา */
 export const llmIntentSchema = z.object({
@@ -101,8 +101,9 @@ export async function parseIntent(
         paymentTermsRequestedDays: out.payment_terms_requested_days,
         competitorClaim: out.competitor_price !== null ? { mentioned: true, price: out.competitor_price } : null,
         buyerName: null,
-        // ด่านสองชั้น: GPT หรือกฎของเราจับได้ก็พอ
-        injectionSuspected: out.injection_suspected || fallback.injectionSuspected,
+        // ด่านสองชั้น: GPT หรือกฎของเราจับได้ก็พอ · ยกเว้น "เป็นคนหรือบอท" ที่ GPT ติดธงเอง (GPT จริง 25 ต.ค. 2569)
+        // — ไม่งั้นได้คำตอบ "ราคาล็อก" แทนบอกว่าเป็น AI · มีคำสั่งให้ลืมคำสั่งด้วย กฎของเรายังจับได้
+        injectionSuspected: fallback.injectionSuspected || (out.injection_suspected && !ASKS_BOT.test(text)),
         ...(budget !== null && { budgetTotal: budget }),
         // ต่อราคาซ้ำๆ ("ลดอีกๆๆ") GPT มักติดธงหงุดหงิด → ตอนต่อราคาเชื่อเฉพาะคำบ่นในข้อความจริง (ไม่งั้นได้คำขอโทษแทนเรื่องราคา)
         ...((fallback.frustrated || (out.frustrated && out.intent !== "negotiate_price" && out.intent !== "order")) && {
