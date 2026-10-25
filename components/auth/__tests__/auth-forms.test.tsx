@@ -37,6 +37,25 @@ describe("LoginForm", () => {
     expect(form.get("js")).toBe("1");
   });
 
+  it("บัญชีทดลอง: โชว์อีเมลกับรหัส และกดแล้วกรอกให้ ส่งเข้าระบบได้เลย", async () => {
+    const action = fakeAction({});
+    render(<LoginForm action={action} demoAccount={{ email: "demo@example.com", password: "demo-pass-1" }} />);
+    expect(screen.getByText("demo@example.com")).toBeInTheDocument();
+    expect(screen.getByText("demo-pass-1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "ใช้บัญชีทดลอง" }));
+    expect(screen.getByLabelText("อีเมล")).toHaveValue("demo@example.com");
+    expect(screen.getByLabelText("รหัสผ่าน")).toHaveValue("demo-pass-1");
+    fireEvent.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+    expect(action.mock.calls[0][1].get("email")).toBe("demo@example.com");
+  });
+
+  it("ไม่มีบัญชีทดลอง → ไม่มีกล่องบัญชีทดลอง", () => {
+    render(<LoginForm action={fakeAction({})} />);
+    expect(screen.queryByRole("button", { name: "ใช้บัญชีทดลอง" })).not.toBeInTheDocument();
+  });
+
   it("ล็อกอินผ่าน → สั่งเล่นคัตซีนต้อนรับพร้อมหน้าปลายทาง", async () => {
     const welcome = { to: "/owner", name: "เฮียชัย", role: "owner" as const };
     render(<LoginForm action={fakeAction({ welcome })} />);
