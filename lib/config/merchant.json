@@ -18,6 +18,76 @@
       ],
       "cashDiscountPct": 0.1,
       "defaultCreditDays": 30
+    },
+    {
+      "sku": "CASE-IP15-CLR",
+      "name": "เคสใส iPhone 15",
+      "listPrice": 89,
+      "unitCost": 55,
+      "floorPrice": 70,
+      "volumeTiers": [
+        { "minQty": 300, "price": 85 },
+        { "minQty": 1000, "price": 79 },
+        { "minQty": 3000, "price": 75 }
+      ],
+      "cashDiscountPct": 0.05,
+      "defaultCreditDays": 30
+    },
+    {
+      "sku": "FLM-IP15-GLS",
+      "name": "ฟิล์มกระจก iPhone 15",
+      "listPrice": 59,
+      "unitCost": 32,
+      "floorPrice": 45,
+      "volumeTiers": [
+        { "minQty": 300, "price": 55 },
+        { "minQty": 1000, "price": 50 },
+        { "minQty": 3000, "price": 47 }
+      ],
+      "cashDiscountPct": 0.05,
+      "defaultCreditDays": 30
+    },
+    {
+      "sku": "PWB-10K",
+      "name": "พาวเวอร์แบงก์ 10000mAh",
+      "listPrice": 450,
+      "unitCost": 310,
+      "floorPrice": 370,
+      "volumeTiers": [
+        { "minQty": 100, "price": 430 },
+        { "minQty": 500, "price": 400 },
+        { "minQty": 1000, "price": 385 }
+      ],
+      "cashDiscountPct": 0.05,
+      "defaultCreditDays": 30
+    },
+    {
+      "sku": "EAR-TWS-01",
+      "name": "หูฟังบลูทูธ TWS",
+      "listPrice": 390,
+      "unitCost": 250,
+      "floorPrice": 310,
+      "volumeTiers": [
+        { "minQty": 100, "price": 370 },
+        { "minQty": 500, "price": 345 },
+        { "minQty": 1000, "price": 330 }
+      ],
+      "cashDiscountPct": 0.05,
+      "defaultCreditDays": 30
+    },
+    {
+      "sku": "STD-DESK-01",
+      "name": "ขาตั้งมือถือตั้งโต๊ะ",
+      "listPrice": 120,
+      "unitCost": 70,
+      "floorPrice": 90,
+      "volumeTiers": [
+        { "minQty": 200, "price": 112 },
+        { "minQty": 1000, "price": 100 },
+        { "minQty": 2000, "price": 95 }
+      ],
+      "cashDiscountPct": 0.05,
+      "defaultCreditDays": 30
     }
   ],
   "deadStock": [

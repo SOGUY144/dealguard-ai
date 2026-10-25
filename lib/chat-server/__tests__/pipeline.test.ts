@@ -970,7 +970,9 @@ describe("คุยอิสระ — ตอบตรงคำถาม แต�
     expect(knowledge).toContain("คุยกับคนจริง");
     // ตัวเลขที่ GPT เห็น/พูดได้มีแค่ราคาปกติ — ไม่มีต้นทุน ฿100 / ราคาพื้น ฿120 / ขั้นราคา (ให้ระบบคิดตอนลูกค้าบอกจำนวน)
     expect(input.numbers).toEqual([150]);
-    expect(knowledge.replace(/\d+\s*เมตร/g, "").match(/\d+/g)).toEqual(["150"]);
+    // ชื่อสินค้ามีตัวเลขได้ ("1 เมตร", "iPhone 15") — ตัดชื่อออกก่อนนับ
+    const withoutNames = config.products.reduce((k, p) => k.split(p.name).join(""), knowledge);
+    expect(withoutNames.match(/\d+/g)).toEqual(["150"]);
   });
 
   it.each([
