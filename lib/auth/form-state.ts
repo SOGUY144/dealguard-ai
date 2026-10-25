@@ -8,6 +8,8 @@ export type FormState = {
   notice?: string;
   /** ค่าที่กรอกไว้ ให้ไม่ต้องพิมพ์ใหม่ (ไม่เก็บรหัสผ่าน) */
   values?: Partial<Record<string, string>>;
+  /** ล็อกอินสำเร็จ (ฟอร์มที่มี JS) → เล่นคัตซีนต้อนรับก่อนพาไปหน้านี้ */
+  welcome?: { to: string; name: string; role: "owner" | "buyer" };
 };
 
 export type FormAction = (prev: FormState, form: FormData) => Promise<FormState>;

@@ -11,6 +11,14 @@ const PUBLIC_PATHS = [
   "/privacy",
   "/how-to-order",
   "/contact",
+  // ไอคอน รูปพรีวิวลิงก์ manifest robots — คนที่ยังไม่ล็อกอิน (และบอทของ LINE/Facebook) ต้องโหลดได้
+  "/icon.svg",
+  "/apple-icon.png",
+  "/opengraph-image.png",
+  "/manifest.webmanifest",
+  "/robots.txt",
+  "/icons",
+  "/welcome",
 ];
 /** ล็อกอินแล้วไม่ต้องเห็นอีก */
 const GUEST_ONLY = ["/login", "/signup", "/forgot-password"];

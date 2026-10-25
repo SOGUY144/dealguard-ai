@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useId } from "react";
 import type { FormAction } from "@/lib/auth/form-state";
 import { FormMessage, SubmitButton, TextField } from "./fields";
+import { WelcomeHandoff } from "./welcome-handoff";
 
 export function SignupForm({ action }: { action: FormAction }) {
   const [state, formAction] = useActionState(action, {});
@@ -12,6 +13,8 @@ export function SignupForm({ action }: { action: FormAction }) {
 
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
+      {/* สมัครแล้วได้ session ทันที → คัตซีนต้อนรับแล้วพาเข้าแชต */}
+      <WelcomeHandoff welcome={state.welcome} />
       <FormMessage error={state.error} notice={state.notice} />
       <TextField
         label="ชื่อที่ให้ร้านเรียก"

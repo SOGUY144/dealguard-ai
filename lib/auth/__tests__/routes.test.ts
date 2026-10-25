@@ -18,7 +18,22 @@ describe("decideAccess (proxy — เช็กเบื้องต้น ก่
   });
 
   it("หน้าสาธารณะเข้าได้โดยไม่ต้องล็อกอิน", () => {
-    for (const pathname of ["/login", "/signup", "/forgot-password", "/auth/callback", "/privacy", "/how-to-order", "/contact"]) {
+    for (const pathname of [
+      "/login",
+      "/signup",
+      "/forgot-password",
+      "/auth/callback",
+      "/privacy",
+      "/how-to-order",
+      "/contact",
+      "/icon.svg",
+      "/apple-icon.png",
+      "/opengraph-image.png",
+      "/manifest.webmanifest",
+      "/robots.txt",
+      "/icons/icon-192.png",
+      "/welcome/bot-wave.png",
+    ]) {
       expect(decideAccess({ pathname, search: "", signedIn: false })).toBe("allow");
     }
   });

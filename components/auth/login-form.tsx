@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useActionState } from "react";
 import type { FormAction } from "@/lib/auth/form-state";
 import { FormMessage, SubmitButton, TextField } from "./fields";
+import { WelcomeHandoff } from "./welcome-handoff";
 
 export function LoginForm({ action }: { action: FormAction }) {
   const [state, formAction] = useActionState(action, {});
@@ -16,6 +17,8 @@ export function LoginForm({ action }: { action: FormAction }) {
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       <input type="hidden" name="next" value={next} />
+      {/* ล็อกอินผ่าน → คัตซีนต้อนรับแล้วพาไปหน้าปลายทาง */}
+      <WelcomeHandoff welcome={state.welcome} />
       <FormMessage error={state.error ?? linkError} notice={state.notice} />
       <TextField
         label="อีเมล"

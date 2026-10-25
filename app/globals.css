@@ -74,3 +74,267 @@
 
   --spacing-touch: 44px;
 }
+
+/* ---- คัตซีนต้อนรับหลังล็อกอิน + มาสคอต (components/welcome) ----
+   ต้องอยู่ไฟล์นี้ หลัง @import tailwindcss: ถ้าแยกไฟล์แล้วโหลดก่อน ลำดับ layer จะเพี้ยน (base ทับ components ทั้งเว็บ) */
+@layer components {
+  .cs-root {
+    animation: cs-fade-in 0.35s ease-out both;
+    transition: opacity 0.7s ease;
+  }
+  .cs-root[data-leaving="true"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .cs-stage {
+    transition:
+      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.7s ease;
+  }
+  .cs-root[data-leaving="true"] .cs-stage {
+    transform: scale(1.08);
+    filter: blur(6px);
+  }
+
+  /* แสงม่วงนุ่มๆ หลังมาสคอต */
+  .cs-glow {
+    position: absolute;
+    inset: -20%;
+    background:
+      radial-gradient(circle at 38% 48%, rgba(156, 131, 240, 0.28), rgba(156, 131, 240, 0) 32%),
+      radial-gradient(circle at 70% 55%, rgba(251, 228, 239, 0.7), rgba(251, 228, 239, 0) 35%);
+    animation: cs-breathe 5s ease-in-out infinite alternate;
+  }
+
+  /* ของที่ค่อยๆ โผล่ (ข้อความ คำทักทาย) */
+  .cs-item {
+    opacity: 0;
+    transform: translateY(10px);
+    transition:
+      opacity 0.4s ease,
+      transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .cs-item[data-show="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* มาสคอตลอยออกมาจากซ้าย กระโดดเบาๆ เหมือนก้าวเดิน */
+  .cs-bot {
+    opacity: 0;
+    transform: translateX(-60vw) rotate(-8deg);
+    transition:
+      opacity 0.3s ease,
+      transform 1.05s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .cs-bot[data-show="true"] {
+    opacity: 1;
+    transform: none;
+  }
+  .cs-bot[data-show="true"] .cs-hop {
+    animation: cs-hop 0.26s ease-in-out 4;
+  }
+
+  /* จอแชตย่อ */
+  .cs-phone {
+    opacity: 0;
+    transform: translateY(24px) scale(0.94);
+    transition:
+      opacity 0.45s ease,
+      transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cs-phone[data-show="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .cs-msg {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+    transition:
+      opacity 0.3s ease,
+      transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cs-msg.bubble-buyer {
+    transform-origin: 100% 100%;
+  }
+  .cs-msg.bubble-ai {
+    transform-origin: 0 100%;
+  }
+  .cs-msg[data-show="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .cs-typing {
+    display: inline-flex;
+    gap: 4px;
+    padding: 3px 2px;
+  }
+  .cs-typing i {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    opacity: 0.35;
+    animation: cs-dot 1s ease-in-out infinite;
+  }
+  .cs-typing i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .cs-typing i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .cs-offer {
+    transition:
+      background-color 0.3s ease,
+      border-color 0.3s ease,
+      transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cs-offer[data-picked="true"] {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+    transform: scale(1.03);
+  }
+
+  /* ตราปิดดีล เด้งขึ้นกลางจอแชต */
+  .cs-deal {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px;
+    text-align: center;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.82);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    transform: scale(0.9);
+    pointer-events: none;
+    transition:
+      opacity 0.35s ease,
+      transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cs-deal[data-show="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* --- มาสคอต (welcome-bot.tsx) --- */
+  .wb-float {
+    animation: wb-float 2.6s ease-in-out infinite alternate;
+  }
+  .wb-shadow {
+    transform-origin: 120px 256px;
+    animation: wb-shadow 2.6s ease-in-out infinite alternate;
+  }
+  .wb-antenna {
+    transform-origin: 120px 15px;
+    animation: wb-pulse 1.6s ease-in-out infinite;
+  }
+  .wb-blink {
+    transform-origin: 120px 94px;
+    animation: wb-blink 3.6s ease-in-out infinite;
+  }
+  .wb-arm {
+    transform-box: view-box;
+    transform-origin: 0 0;
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .wb-wave {
+    transform-box: view-box;
+    transform-origin: 0 0;
+    animation: wb-wave 0.5s ease-in-out infinite alternate;
+  }
+  .wb-phone {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 0.3s ease,
+      transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .wb-phone-on {
+    opacity: 1;
+    transform: none;
+  }
+  .wb-sparkles {
+    opacity: 0;
+    transform-origin: 120px 120px;
+    transform: scale(0.6);
+    transition:
+      opacity 0.3s ease,
+      transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .wb-sparkles-on {
+    opacity: 1;
+    transform: none;
+    animation: wb-twinkle 1.2s ease-in-out 0.5s infinite alternate;
+  }
+}
+
+@keyframes cs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes cs-breathe {
+  to {
+    transform: scale(1.06) translateX(1.5%);
+  }
+}
+@keyframes cs-hop {
+  50% {
+    transform: translateY(-10px);
+  }
+}
+@keyframes cs-dot {
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@keyframes wb-float {
+  to {
+    transform: translateY(-9px);
+  }
+}
+@keyframes wb-shadow {
+  to {
+    transform: scale(0.82);
+    opacity: 0.7;
+  }
+}
+@keyframes wb-pulse {
+  50% {
+    transform: scale(1.18);
+  }
+}
+@keyframes wb-blink {
+  0%,
+  90%,
+  100% {
+    transform: none;
+  }
+  94% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes wb-wave {
+  from {
+    transform: rotate(-12deg);
+  }
+  to {
+    transform: rotate(14deg);
+  }
+}
+@keyframes wb-twinkle {
+  to {
+    opacity: 0.55;
+    transform: scale(1.06);
+  }
+}

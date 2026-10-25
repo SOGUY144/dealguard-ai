@@ -39,8 +39,13 @@ export async function login(_prev: FormState, form: FormData): Promise<FormState
     return { error: authErrorMessage(error), values };
   }
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).single();
-  redirect(landingPath(profile?.role ?? "buyer", safeNextPath(String(form.get("next") ?? "/"))));
+  const { data: profile } = await supabase.from("profiles").select("role, display_name").eq("id", data.user.id).single();
+  const role = profile?.role ?? "buyer";
+  const to = landingPath(role, safeNextPath(String(form.get("next") ?? "/")));
+  // ฟอร์มที่ JS ทำงานแล้ว (ใส่ช่อง js หลัง hydrate) → เล่นคัตซีนต้อนรับก่อน แล้วค่อยพาไปเอง
+  // ไม่มี JS → redirect ตามเดิม ล็อกอินได้เสมอ
+  if (form.get("js") === "1") return { welcome: { to, name: profile?.display_name || "ลูกค้า", role } };
+  redirect(to);
 }
 
 export async function signup(_prev: FormState, form: FormData): Promise<FormState> {
@@ -68,7 +73,10 @@ export async function signup(_prev: FormState, form: FormData): Promise<FormStat
   // ปิดยืนยันอีเมลไว้ (ทีมตัดสินใจ) → ได้ session เลย
   // หมายเหตุ: ตอนปิดยืนยันอีเมล อีเมลซ้ำจะได้ error user_already_exists ซึ่งเผยว่ามีบัญชีนี้
   // ทีมยอมรับไว้เพื่อให้ลูกค้ารู้ว่าต้องไปเข้าสู่ระบบแทน
-  if (data.session) redirect("/");
+  if (data.session) {
+    if (form.get("js") === "1") return { welcome: { to: "/", name: displayName, role: "buyer" } };
+    redirect("/");
+  }
   // เปิดยืนยันอีเมลไว้: ต้องเปิดลิงก์ในอีเมลก่อน
   return { notice: `ส่งลิงก์ยืนยันไปที่ ${email} แล้ว เปิดลิงก์ในอีเมลเพื่อเริ่มใช้งาน`, values };
 }

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { FormAction, FormState } from "@/lib/auth/form-state";
+import { welcomeStore } from "@/lib/welcome/store";
 import { ForgotPasswordForm } from "../forgot-password-form";
 import { LoginForm } from "../login-form";
 import { SignupForm } from "../signup-form";
@@ -32,6 +33,16 @@ describe("LoginForm", () => {
     expect(form.get("email")).toBe("nok@example.com");
     expect(form.get("password")).toBe("secret-123");
     expect(form.get("next")).toBe("/owner");
+    // JS ทำงาน → บอก server ให้ตอบ welcome (เล่นคัตซีน) แทน redirect
+    expect(form.get("js")).toBe("1");
+  });
+
+  it("ล็อกอินผ่าน → สั่งเล่นคัตซีนต้อนรับพร้อมหน้าปลายทาง", async () => {
+    const welcome = { to: "/owner", name: "เฮียชัย", role: "owner" as const };
+    render(<LoginForm action={fakeAction({ welcome })} />);
+    fireEvent.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+    await waitFor(() => expect(welcomeStore.get()).toEqual(welcome));
+    welcomeStore.finish();
   });
 
   it("แสดง error รวม และ error ข้างช่องที่ผิด", async () => {
