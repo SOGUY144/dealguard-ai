@@ -405,10 +405,12 @@ code review 9 ข้อ แก้ครบ + test ใหม่ทุกข้อ
   - เริ่มพาไปหน้าปลายทางตั้งแต่ตอนปิดดีล (หน้าใหม่โหลดอยู่ข้างหลัง) · คัตซีนอยู่ใน layout จึงค้างข้ามการเปลี่ยนหน้าแล้วค่อยจาง
   - server action `login`/`signup` ตอบ `welcome` แทน redirect **เฉพาะเมื่อฟอร์มส่ง `js=1`** (`WelcomeHandoff` ใส่ช่องนี้หลัง hydrate) · ไม่มี JS = redirect ตามเดิม
   - มาสคอตวาดเป็น SVG (`welcome-bot.tsx` · ท่า wave / chat / happy) ใช้ซ้ำในหน้า 404 / error
+  - ปิดดีลในคัตซีน: เครื่องหมายถูกเด้ง + วงแสง + กระดาษสี (`components/ui/confetti-burst.tsx`) · ทางออกผ่านก้อนเมฆ: เมฆลอยเข้ามาปิดจอ 0.65 วิ แล้วแยกออกให้เห็นหน้าใหม่ 1 วิ (`data-phase` play → cover → reveal)
+  - แชตจริง: ลูกค้ากดยืนยันข้อเสนอ → ใบสรุปออเดอร์มาพร้อมกระดาษสี + วงแสงม่วงครั้งเดียว (`ChatThread` จำ id ข้อความตอนเปิดหน้า — ออเดอร์เก่าตอนโหลดหน้าใหม่ไม่ฉลองซ้ำ) · ลดการเคลื่อนไหว = ไม่มีทั้งคู่
   - CSS อยู่ท้าย `app/globals.css` — ห้ามแยกไฟล์ CSS ที่มี `@layer` แล้ว import จาก component: ถ้าโหลดก่อน globals ลำดับ layer เพี้ยน (base ทับ components ทั้งเว็บ ฟองแชตไม่มี padding)
 - [x] **รายละเอียดที่เว็บส่วนมากมี:** favicon/ไอคอนของเราเอง (เดิมเป็นโลโก้ Next) · apple-icon · `manifest.webmanifest` (เพิ่มลงหน้าจอโฮมได้) · รูปพรีวิวตอนแชร์ลิงก์ `opengraph-image.png` + og/twitter meta · theme-color · `robots.txt` (กันหน้าเถ้าแก่/ออเดอร์/API) · หน้า 404 ภาษาไทย (แยกของหน้าเถ้าแก่) · หน้า error + global-error พร้อมปุ่มลองใหม่
   - ไฟล์เหล่านี้เพิ่มใน `PUBLIC_PATHS` — proxy เช็กล็อกอินทุก path (ไม่ข้ามตามนามสกุล) ถ้าไม่เพิ่ม คนที่ยังไม่ล็อกอินและบอทของ LINE/Facebook จะถูกส่งไปหน้าล็อกอินแทนรูป
-- **ทดสอบ:** unit 915 · tsc / eslint / build ผ่าน · อัดวิดีโอคัตซีนใน Chromium ที่ 1280 กับ 390 px ดูทีละเฟรม
+- **ทดสอบ:** unit 918 · tsc / eslint / build ผ่าน · อัดวิดีโอคัตซีนใน Chromium ที่ 1280 กับ 390 px ดูทีละเฟรม
 
 ## Verification (ทุกเฟส)
 - จบแต่ละเฟสต้องรัน `npm test`, `npm run lint`, `npm run build` ให้ผ่านก่อน (สกิล `verification-before-completion`)

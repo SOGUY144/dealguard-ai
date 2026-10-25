@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { welcomeStore } from "@/lib/welcome/store";
-import { HARD_NAV_AFTER, LEAVE_MS, MIN_END, NAVIGATE_AT, STEPS, WelcomeCutscene } from "../welcome-cutscene";
+import { COVER_MS, HARD_NAV_AFTER, LEAVE_MS, MIN_END, NAVIGATE_AT, STEPS, WelcomeCutscene } from "../welcome-cutscene";
 
 const nav = vi.hoisted(() => ({ pathname: "/login", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -63,6 +63,8 @@ describe("คัตซีนต้อนรับหลังล็อกอิ�
 
     act(() => vi.advanceTimersByTime(NAVIGATE_AT - STEPS.ask));
     expect(screen.getByText("ปิดดีลแล้ว").parentElement).toHaveAttribute("data-show", "true");
+    // ฉลองปิดดีล: กระดาษสีพุ่งจากเครื่องหมายถูก
+    expect(document.querySelector(".cs-deal .confetti")).toBeInTheDocument();
     expect(nav.replace).toHaveBeenCalledExactlyOnceWith("/");
   });
 
@@ -72,10 +74,13 @@ describe("คัตซีนต้อนรับหลังล็อกอิ�
     act(() => vi.advanceTimersByTime(NAVIGATE_AT));
     arrive(rerender);
 
-    expect(screen.getByRole("dialog")).toHaveAttribute("data-leaving", "false");
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-phase", "play");
     act(() => vi.advanceTimersByTime(MIN_END - NAVIGATE_AT));
-    expect(screen.getByRole("dialog")).toHaveAttribute("data-leaving", "true");
-    act(() => vi.advanceTimersByTime(LEAVE_MS));
+    // ทางออกผ่านก้อนเมฆ: เมฆปิดจอก่อน แล้วค่อยแยกออกให้เห็นหน้าใหม่
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-phase", "cover");
+    act(() => vi.advanceTimersByTime(COVER_MS));
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-phase", "reveal");
+    act(() => vi.advanceTimersByTime(LEAVE_MS - COVER_MS));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(welcomeStore.get()).toBeNull();
   });
@@ -87,7 +92,7 @@ describe("คัตซีนต้อนรับหลังล็อกอิ�
     expect(nav.replace).toHaveBeenCalledExactlyOnceWith("/owner");
 
     arrive(rerender, "/owner");
-    expect(screen.getByRole("dialog")).toHaveAttribute("data-leaving", "true");
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-phase", "cover");
     act(() => vi.advanceTimersByTime(LEAVE_MS));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

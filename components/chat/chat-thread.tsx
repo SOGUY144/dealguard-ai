@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { groupMessages, type MessageRow } from "@/lib/chat/group";
 import type { ChatMessage, Offer, Storefront } from "@/lib/chat/types";
 import { cn } from "@/lib/cn";
@@ -58,6 +59,8 @@ export function ChatThread({
   ...handlers
 }: Props) {
   const rows = groupMessages(messages);
+  // ข้อความที่มีอยู่ตั้งแต่เปิดหน้า — ใบสรุปออเดอร์ที่ไม่อยู่ในนี้คือดีลที่เพิ่งปิดตอนนี้ → ฉลอง (โหลดหน้าใหม่ไม่ฉลองซ้ำ)
+  const [initialIds] = useState(() => new Set(messages.map((m) => m.id)));
   const lastOffers = [...messages].reverse().find((m) => m.type === "offers");
 
   return (
@@ -85,6 +88,7 @@ export function ChatThread({
           autoPlayId={autoPlayId}
           simulateVoice={simulateVoice}
           productImages={productImages}
+          initialIds={initialIds}
           {...handlers}
         />
       ))}
@@ -129,6 +133,7 @@ type RowProps = ThreadHandlers & {
   autoPlayId: string | null;
   simulateVoice: boolean;
   productImages: Record<string, string>;
+  initialIds: ReadonlySet<string>;
 };
 
 function Row({
@@ -142,6 +147,7 @@ function Row({
   autoPlayId,
   simulateVoice,
   productImages,
+  initialIds,
   ...handlers
 }: RowProps) {
   const first = row.messages[0];
@@ -208,6 +214,7 @@ function Row({
             busy={busy}
             autoPlay={m.id === autoPlayId}
             simulateVoice={simulateVoice}
+            celebrate={!initialIds.has(m.id)}
             {...handlers}
           />
         ))}
@@ -224,6 +231,7 @@ function AiItem({
   busy,
   autoPlay,
   simulateVoice,
+  celebrate,
   onSelectOffer,
   onConfirmOffer,
   onOpenProducts,
@@ -236,6 +244,8 @@ function AiItem({
   busy: boolean;
   autoPlay: boolean;
   simulateVoice: boolean;
+  /** ข้อความเพิ่งมาหลังเปิดหน้า */
+  celebrate: boolean;
 }) {
   switch (m.type) {
     case "ai_text":
@@ -283,6 +293,7 @@ function AiItem({
           offer={m.offer}
           productName={m.productName}
           bankAccountName={storefront.bankAccountName}
+          celebrate={celebrate}
         />
       );
     case "handoff":

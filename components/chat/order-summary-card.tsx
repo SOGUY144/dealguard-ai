@@ -1,15 +1,26 @@
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/button";
+import { ConfettiBurst } from "@/components/ui/confetti-burst";
 import { cn } from "@/lib/cn";
 import type { Offer } from "@/lib/chat/types";
 import { formatBaht, formatCredit, formatQty } from "@/lib/format";
 
-type Props = { orderId: string; offer: Offer; productName: string; bankAccountName: string };
+type Props = {
+  orderId: string;
+  offer: Offer;
+  productName: string;
+  bankAccountName: string;
+  /** เพิ่งปิดดีลตอนนี้ (ไม่ใช่ออเดอร์เก่าตอนเปิดหน้า) → กระดาษสี + วงแสงครั้งเดียว */
+  celebrate?: boolean;
+};
 
 /** สรุปออเดอร์ในแชต — เตือนเรื่องบัญชีรับโอนทุกครั้ง กันมิจฉาชีพแอบอ้าง (SKILL §10) */
-export function OrderSummaryCard({ orderId, offer, productName, bankAccountName }: Props) {
+export function OrderSummaryCard({ orderId, offer, productName, bankAccountName, celebrate = false }: Props) {
   return (
-    <div className="bubble-ai flex flex-col gap-2.5 p-3 text-[13px] md:px-4 md:py-3.5 md:text-sm">
+    <div
+      className={cn("bubble-ai relative flex flex-col gap-2.5 p-3 text-[13px] md:px-4 md:py-3.5 md:text-sm", celebrate && "deal-fresh")}
+    >
+      {celebrate && <ConfettiBurst className="left-1/2 top-6" />}
       <span className="flex items-center gap-2 text-sm font-semibold md:text-base">
         <span aria-hidden="true" className="btn-primary hidden size-[26px] min-h-0 shrink-0 p-0 md:grid md:place-items-center">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">

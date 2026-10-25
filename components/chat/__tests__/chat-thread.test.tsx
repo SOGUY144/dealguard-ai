@@ -183,3 +183,26 @@ describe("ChatThread", () => {
   });
 });
 
+
+describe("ChatThread — ฉลองตอนปิดดีล", () => {
+  const handlers = { onSelectOffer: vi.fn(), onConfirmOffer: vi.fn(), onOpenProducts: vi.fn(), onShowOffers: vi.fn() };
+  const offers = buildScenario("offers", { storefront, products, buyerName: "คุณนก" }).messages;
+  const ordered = buildScenario("ordered", { storefront, products, buyerName: "คุณนก" }).messages;
+  const confetti = (container: HTMLElement) => container.querySelector(".confetti");
+
+  it("เปิดหน้ามาเจอออเดอร์เก่า → ไม่ฉลองซ้ำ", () => {
+    const { container } = render(<ChatThread messages={ordered} storefront={storefront} buyerName="คุณนก" {...handlers} />);
+    expect(screen.getByText("ส่งออเดอร์ให้ร้านแล้วครับ")).toBeInTheDocument();
+    expect(confetti(container)).toBeNull();
+  });
+
+  it("ลูกค้าเพิ่งยืนยันข้อเสนอ → ใบสรุปออเดอร์มาพร้อมกระดาษสีและวงแสง", () => {
+    const { container, rerender } = render(
+      <ChatThread messages={offers} storefront={storefront} buyerName="คุณนก" {...handlers} />,
+    );
+    expect(confetti(container)).toBeNull();
+    rerender(<ChatThread messages={ordered} storefront={storefront} buyerName="คุณนก" {...handlers} />);
+    expect(confetti(container)).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".deal-fresh")).toHaveTextContent("ส่งออเดอร์ให้ร้านแล้วครับ");
+  });
+});

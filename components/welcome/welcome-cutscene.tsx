@@ -2,7 +2,8 @@
 
 import { Check, LoaderCircle, Store } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { ConfettiBurst } from "@/components/ui/confetti-burst";
 import { welcomeStore, type Welcome } from "@/lib/welcome/store";
 import { WelcomeBot, type BotPose } from "./welcome-bot";
 
@@ -21,7 +22,9 @@ export const STEPS = {
 export const NAVIGATE_AT = STEPS.deal;
 /** จางออกได้เร็วสุดตอนนี้ (ถ้าหน้าใหม่มาแล้ว) */
 export const MIN_END = 5000;
-export const LEAVE_MS = 700;
+/** ทางออกผ่านก้อนเมฆ: เมฆลอยเข้ามาปิดจอ (cover) → เมฆแยกออกให้เห็นหน้าใหม่ (reveal) */
+export const COVER_MS = 650;
+export const LEAVE_MS = COVER_MS + 1000;
 /** หน้าใหม่ยังไม่มาจริงๆ → โหลดหน้าใหม่ทั้งหน้าแทน ไม่ค้างอยู่ในคัตซีน */
 export const HARD_NAV_AFTER = 12000;
 
@@ -70,6 +73,7 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
 
   const [elapsed, setElapsed] = useState(0);
   const [skipped, setSkipped] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const [reduced] = useState(() => window.matchMedia(REDUCED_MOTION).matches);
   const navStarted = useRef(false);
   // หน้าใหม่มาแล้ว + เล่นจบ (หรือกดข้าม) → จางออก
@@ -97,8 +101,11 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
 
   useEffect(() => {
     if (!leaving) return;
-    const t = window.setTimeout(() => welcomeStore.finish(), LEAVE_MS);
-    return () => window.clearTimeout(t);
+    const timers = [
+      window.setTimeout(() => setRevealed(true), COVER_MS),
+      window.setTimeout(() => welcomeStore.finish(), LEAVE_MS),
+    ];
+    return () => timers.forEach((t) => window.clearTimeout(t));
   }, [leaving]);
 
   // กันค้าง: เน็ตช้า/หน้าใหม่ไม่มาสักที → เปิดหน้าใหม่แบบเต็มหน้า
@@ -127,6 +134,7 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
   if (reduced) return null;
 
   const at = (step: Step) => skipped || elapsed >= STEPS[step];
+  const phase = !leaving ? "play" : revealed ? "reveal" : "cover";
   const pose: BotPose = at("deal") ? "happy" : at("phone") ? "chat" : "wave";
   const greeting =
     welcome.role === "owner" ? "วันนี้ผมช่วยตอบแชตลูกค้าแทนเถ้าแก่นะครับ" : `ผมคือผู้ช่วย AI ของ${storeName} ต่อราคาให้ได้ทันที`;
@@ -137,8 +145,10 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
       aria-modal="true"
       aria-label={`ยินดีต้อนรับ คุณ${welcome.name}`}
       data-leaving={leaving}
-      className="cs-root app-bg fixed inset-0 z-[1000] overflow-hidden"
+      data-phase={phase}
+      className="cs-root fixed inset-0 z-[1000] overflow-hidden"
     >
+      <div aria-hidden="true" className="cs-backdrop app-bg" />
       <div aria-hidden="true" className="cs-glow" />
       <p role="status" className="sr-only">
         เข้าสู่ระบบแล้ว กำลังพาเข้า{storeName}
@@ -148,7 +158,7 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
         ref={skipButton}
         type="button"
         onClick={() => setSkipped(true)}
-        className="absolute right-4 top-4 z-10 flex h-10 items-center rounded-full border border-white/90 bg-white/70 px-4 text-sm font-semibold text-accent-ink shadow-soft backdrop-blur focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:right-6 md:top-6"
+        className="cs-chrome absolute right-4 top-4 z-10 flex h-10 items-center rounded-full border border-white/90 bg-white/70 px-4 text-sm font-semibold text-accent-ink shadow-soft backdrop-blur focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:right-6 md:top-6"
       >
         ข้าม
       </button>
@@ -215,8 +225,13 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
 
           {/* ปิดดีล */}
           <div className="cs-deal" data-show={at("deal")}>
-            <span className="flex size-11 items-center justify-center rounded-full bg-ok-ink text-white shadow-soft">
-              <Check aria-hidden="true" size={24} strokeWidth={3} />
+            <span className="relative flex size-12 items-center justify-center">
+              <span className="cs-ring" />
+              <span className="cs-check relative flex size-12 items-center justify-center rounded-full bg-ok-ink text-white shadow-soft">
+                <Check aria-hidden="true" size={26} strokeWidth={3} />
+              </span>
+              {/* ฉลองปิดดีล: กระดาษสีพุ่งจากเครื่องหมายถูก */}
+              {at("deal") && <ConfettiBurst />}
             </span>
             <span className="text-lg font-semibold text-ok-ink">ปิดดีลแล้ว</span>
             <span className="text-[13px] text-muted">ร้านยังได้กำไร ไม่ต่ำกว่าราคาที่ตั้งไว้</span>
@@ -225,12 +240,55 @@ function Cutscene({ welcome, storeName }: { welcome: Welcome; storeName: string 
       </div>
 
       <p
-        className="cs-item absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 px-4 text-center text-[13px] text-muted md:bottom-8"
+        className="cs-item cs-chrome absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 px-4 text-center text-[13px] text-muted md:bottom-8"
         data-show={at("deal")}
       >
         <LoaderCircle aria-hidden="true" size={15} className="animate-spin text-accent" />
         กำลังพาเข้า{welcome.role === "owner" ? "หน้าเถ้าแก่" : "ร้าน"}…
       </p>
+
+      <Clouds />
+    </div>
+  );
+}
+
+/** ก้อนเมฆสำหรับทางออก: ตำแหน่งตอนปิดจอ (x, y) · ลอยมาจากทิศ (fx, fy) · ขนาด · หน่วงเวลา */
+const CLOUDS = [
+  { x: "18%", y: "22%", fx: "-55vw", fy: "-35vh", w: "62vmax", d: 0 },
+  { x: "52%", y: "10%", fx: "0vw", fy: "-55vh", w: "58vmax", d: 60 },
+  { x: "84%", y: "24%", fx: "55vw", fy: "-35vh", w: "62vmax", d: 30 },
+  { x: "10%", y: "58%", fx: "-60vw", fy: "0vh", w: "56vmax", d: 90 },
+  { x: "50%", y: "52%", fx: "0vw", fy: "60vh", w: "70vmax", d: 120 },
+  { x: "90%", y: "60%", fx: "60vw", fy: "0vh", w: "56vmax", d: 50 },
+  { x: "22%", y: "92%", fx: "-50vw", fy: "45vh", w: "60vmax", d: 20 },
+  { x: "62%", y: "88%", fx: "10vw", fy: "55vh", w: "58vmax", d: 80 },
+  { x: "92%", y: "96%", fx: "50vw", fy: "45vh", w: "56vmax", d: 40 },
+];
+
+function Clouds() {
+  return (
+    <div aria-hidden="true" className="cs-clouds">
+      <div className="cs-fog" />
+      {CLOUDS.map((c, i) => (
+        <svg
+          key={i}
+          viewBox="0 0 200 120"
+          className="cs-cloud"
+          style={{ "--x": c.x, "--y": c.y, "--fx": c.fx, "--fy": c.fy, "--w": c.w, "--d": `${c.d}ms` } as CSSProperties}
+        >
+          <defs>
+            <linearGradient id={`cs-cloud-${i}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#FFFFFF" />
+              <stop offset="0.7" stopColor="#FBF9FF" />
+              <stop offset="1" stopColor="#ECE5FC" />
+            </linearGradient>
+          </defs>
+          <path
+            fill={`url(#cs-cloud-${i})`}
+            d="M42 104 C16 104 4 86 12 70 C2 54 16 34 38 38 C42 16 68 6 88 18 C100 2 132 4 140 26 C162 16 188 32 184 56 C200 64 198 102 166 104 Z"
+          />
+        </svg>
+      ))}
     </div>
   );
 }
